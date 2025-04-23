@@ -3,7 +3,8 @@ import pytest
 from typing import List, Union
 from pydantic import AnyHttpUrl, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from app.core.config.settings import Settings
+from mdt_agent_system.app.core.config.settings import Settings
+from dotenv import set_key, find_dotenv
 
 # Fixture to manage environment variables during tests
 @pytest.fixture(autouse=True)

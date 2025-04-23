@@ -1,0 +1,123 @@
+{
+    "patient_id": "MDT2024001",
+    "demographics": {
+        "age": 62,
+        "gender": "F",
+        "ethnicity": "Caucasian",
+        "occupation": "Retired Teacher",
+        "smoking_status": "Former smoker, quit 10 years ago"
+    },
+    "medical_history": [
+        {
+            "condition": "Type 2 Diabetes",
+            "diagnosed": "2015-06-15",
+            "status": "Ongoing",
+            "treatment": "Metformin 1000mg BID",
+            "control": "Good, HbA1c 6.8%"
+        },
+        {
+            "condition": "Hypertension",
+            "diagnosed": "2016-03-22",
+            "status": "Ongoing",
+            "treatment": "Lisinopril 20mg daily",
+            "control": "Well-controlled, BP avg 128/78"
+        },
+        {
+            "condition": "Osteoarthritis",
+            "diagnosed": "2018-11-30",
+            "status": "Ongoing",
+            "treatment": "PRN NSAIDs",
+            "affected_joints": ["knees", "hands"]
+        }
+    ],
+    "current_condition": {
+        "primary_complaint": "Persistent cough with occasional blood-tinged sputum",
+        "onset": "2024-01-15",
+        "severity": "Moderate to severe",
+        "associated_symptoms": [
+            "Unintentional weight loss (5kg in 3 months)",
+            "Fatigue",
+            "Decreased appetite",
+            "Night sweats"
+        ],
+        "physical_exam": {
+            "vital_signs": {
+                "temperature": "37.2°C",
+                "blood_pressure": "132/82",
+                "heart_rate": "88",
+                "respiratory_rate": "20",
+                "oxygen_saturation": "95% on room air"
+            },
+            "chest": "Decreased breath sounds in right upper lobe",
+            "lymph_nodes": "Right supraclavicular lymphadenopathy",
+            "weight": "68 kg",
+            "height": "165 cm"
+        }
+    },
+    "imaging_results": {
+        "chest_xray": {
+            "date": "2024-02-01",
+            "findings": "3.5 cm mass in right upper lobe with associated hilar lymphadenopathy",
+            "impression": "Highly suspicious for primary lung malignancy"
+        },
+        "ct_chest": {
+            "date": "2024-02-05",
+            "findings": {
+                "primary_lesion": "3.8 x 3.2 cm spiculated mass in right upper lobe",
+                "lymph_nodes": "Multiple enlarged right hilar and mediastinal lymph nodes",
+                "metastases": "No evidence of distant metastases",
+                "additional": "Mild emphysematous changes in upper lobes"
+            },
+            "impression": "Stage IIIA non-small cell lung cancer likely"
+        },
+        "pet_ct": {
+            "date": "2024-02-12",
+            "findings": {
+                "primary_tumor": "SUV max 12.4 in right upper lobe mass",
+                "lymph_nodes": "FDG-avid right hilar and mediastinal nodes, SUV max 8.2",
+                "distant_disease": "No evidence of distant metastatic disease"
+            }
+        }
+    },
+    "pathology_results": {
+        "bronchoscopy_biopsy": {
+            "date": "2024-02-15",
+            "specimen": "Right upper lobe mass biopsy",
+            "microscopic": "Malignant cells consistent with adenocarcinoma",
+            "immunohistochemistry": {
+                "TTF-1": "Positive",
+                "CK7": "Positive",
+                "CK20": "Negative",
+                "PD-L1": "80% expression"
+            },
+            "molecular": {
+                "EGFR": "Wild type",
+                "ALK": "No rearrangement",
+                "ROS1": "No rearrangement",
+                "KRAS": "G12C mutation detected"
+            },
+            "diagnosis": "Lung adenocarcinoma, KRAS G12C mutated, PD-L1 80%"
+        }
+    },
+    "lab_results": [
+        {
+            "date": "2024-02-01",
+            "category": "Complete Blood Count",
+            "results": {
+                "hemoglobin": "12.8 g/dL",
+                "wbc": "7.2 x10^9/L",
+                "platelets": "280 x10^9/L"
+            }
+        },
+        {
+            "date": "2024-02-01",
+            "category": "Chemistry",
+            "results": {
+                "creatinine": "0.9 mg/dL",
+                "ALT": "28 U/L",
+                "AST": "32 U/L",
+                "albumin": "3.8 g/dL"
+            }
+        }
+    ]
+} 

@@ -1,0 +1,31 @@
+{
+  "914396e4-9f4f-4964-88b0-cb13bd93c255_PathologyAgent": [
+    {
+      "type": "human",
+      "data": {
+        "content": "{'context': '{\\n  \"patient_id\": \"MDT2024001\",\\n  \"demographics\": {\\n    \"age\": 62,\\n    \"gender\": \"F\",\\n    \"ethnicity\": \"Caucasian\",\\n    \"occupation\": \"Retired Teacher\",\\n    \"smoking_status\": \"Former smoker, quit 10 years ago\"\\n  },\\n  \"pathology_results\": {\\n    \"bronchoscopy_biopsy\": {\\n      \"date\": \"2024-02-15\",\\n      \"specimen\": \"Right upper lobe mass biopsy\",\\n      \"microscopic\": \"Malignant cells consistent with adenocarcinoma\",\\n      \"immunohistochemistry\": {\\n        \"TTF-1\": \"Positive\",\\n        \"CK7\": \"Positive\",\\n        \"CK20\": \"Negative\",\\n        \"PD-L1\": \"80% expression\"\\n      },\\n      \"molecular\": {\\n        \"EGFR\": \"Wild type\",\\n        \"ALK\": \"No rearrangement\",\\n        \"ROS1\": \"No rearrangement\",\\n        \"KRAS\": \"G12C mutation detected\"\\n      },\\n      \"diagnosis\": \"Lung adenocarcinoma, KRAS G12C mutated, PD-L1 80%\"\\n    }\\n  },\\n  \"current_condition\": {\\n    \"primary_complaint\": \"Persistent cough with occasional blood-tinged sputum\",\\n    \"onset\": \"2024-01-15\",\\n    \"severity\": \"Moderate to severe\",\\n    \"associated_symptoms\": [\\n      \"Unintentional weight loss (5kg in 3 months)\",\\n      \"Fatigue\",\\n      \"Decreased appetite\",\\n      \"Night sweats\"\\n    ],\\n    \"physical_exam\": {\\n      \"vital_signs\": {\\n        \"temperature\": \"37.2\\\\u00c2\\\\u00b0C\",\\n        \"blood_pressure\": \"132/82\",\\n        \"heart_rate\": \"88\",\\n        \"respiratory_rate\": \"20\",\\n        \"oxygen_saturation\": \"95% on room air\"\\n      },\\n      \"chest\": \"Decreased breath sounds in right upper lobe\",\\n      \"lymph_nodes\": \"Right supraclavicular lymphadenopathy\",\\n      \"weight\": \"68 kg\",\\n      \"height\": \"165 cm\"\\n    }\\n  },\\n  \"ehr_context\": {\\n    \"summary\": \"62-year-old female with history of smoking\",\\n    \"key_history_points\": [\\n      \"Former smoker\",\\n      \"Type 2 Diabetes\"\\n    ],\\n    \"current_presentation\": {\\n      \"main_symptoms\": [\\n        \"Persistent cough\",\\n        \"Weight loss\"\\n      ]\\n    }\\n  },\\n  \"imaging_context\": {\\n    \"summary\": \"Stage IIIA lung adenocarcinoma\",\\n    \"disease_extent\": {\\n      \"primary_tumor\": \"3.8 cm RUL mass\",\\n      \"nodal_status\": \"Multiple hilar and mediastinal nodes\"\\n    },\\n    \"staging\": {\\n      \"clinical_stage\": \"cT2aN2M0, Stage IIIA\"\\n    }\\n  }\\n}', 'task': \"Analyze the patient's pathological and molecular findings. Provide a structured interpretation including histological classification, molecular profile, biomarker status, and therapeutic implications.\"}",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "human",
+        "name": null,
+        "id": null,
+        "example": false
+      }
+    },
+    {
+      "type": "ai",
+      "data": {
+        "content": "{'summary': '**Pathology Analysis Report - Patient ID: MDT2024001**', 'histology': '**  A thorough review of the slides by an experienced pathologist is crucial to determine the grade and differentiation of the adenocarcinoma. This will refine prognostication and treatment planning.', 'molecular_profile': {'key_mutations': '**8. Biomarker Status:**', 'immunotherapy_markers': '**  Pembrolizumab, nivolumab, or other PD-1/PD-L1 inhibitors are strong candidates for either monotherapy or combination therapy.', 'other_markers': {'EGFR': '** Wild type – This excludes the use of EGFR tyrosine kinase inhibitors (TKIs) as a targeted therapy option.', 'ALK': '** No rearrangement – This excludes ALK inhibitors as a targeted therapy option.', 'ROS1': '** No rearrangement – This excludes ROS1 inhibitors as a targeted therapy option.', 'KRAS': '**  Sotorasib or adagrasib are the preferred first-line targeted therapies.'}}, 'therapeutic_implications': ['*10. Recommendations for Additional Testing:**']}",
+        "additional_kwargs": {},
+        "response_metadata": {},
+        "type": "ai",
+        "name": null,
+        "id": null,
+        "example": false,
+        "tool_calls": [],
+        "invalid_tool_calls": [],
+        "usage_metadata": null
+      }
+    }
+  ]
+}

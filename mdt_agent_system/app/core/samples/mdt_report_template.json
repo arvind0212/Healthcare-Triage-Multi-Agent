@@ -1,0 +1,108 @@
+{
+    "patient_id": "MDT2024001",
+    "summary": "62-year-old female with newly diagnosed stage IIIA KRAS G12C mutated lung adenocarcinoma with high PD-L1 expression.",
+    "ehr_analysis": {
+        "key_history_points": [
+            "Former smoker, quit 10 years ago",
+            "Type 2 Diabetes - well controlled on Metformin",
+            "Hypertension - well controlled on Lisinopril",
+            "Osteoarthritis"
+        ],
+        "current_presentation": {
+            "main_symptoms": [
+                "Persistent cough with hemoptysis",
+                "Weight loss of 5kg in 3 months",
+                "Constitutional symptoms present"
+            ],
+            "performance_status": "ECOG 1",
+            "comorbidity_impact": "Well-controlled comorbidities, suitable for aggressive therapy"
+        }
+    },
+    "imaging_analysis": {
+        "disease_extent": {
+            "primary_tumor": "3.8 cm RUL mass, SUV 12.4",
+            "nodal_status": "Multiple FDG-avid hilar and mediastinal nodes",
+            "metastatic_status": "No distant metastases"
+        },
+        "staging": {
+            "clinical_stage": "cT2aN2M0, Stage IIIA",
+            "key_findings": [
+                "Spiculated RUL mass",
+                "Hilar and mediastinal lymphadenopathy",
+                "No distant disease on PET-CT"
+            ]
+        }
+    },
+    "pathology_analysis": {
+        "histology": "Adenocarcinoma",
+        "molecular_profile": {
+            "key_mutations": "KRAS G12C mutation",
+            "immunotherapy_markers": "PD-L1 80%",
+            "other_markers": {
+                "EGFR": "Wild type",
+                "ALK": "Negative",
+                "ROS1": "Negative"
+            }
+        },
+        "implications": "Potentially eligible for KRAS G12C inhibitors and immunotherapy"
+    },
+    "guideline_recommendations": [
+        {
+            "guideline": "NCCN Non-Small Cell Lung Cancer",
+            "version": "2024.1",
+            "category": "Stage IIIA Treatment",
+            "recommendations": [
+                "Consider concurrent chemoradiation followed by immunotherapy",
+                "Clinical trial participation if available",
+                "Consider surgical evaluation for potential resection"
+            ]
+        }
+    ],
+    "specialist_assessment": {
+        "overall_assessment": "Potentially curable stage IIIA NSCLC with favorable molecular profile",
+        "treatment_considerations": [
+            "High PD-L1 expression favors immunotherapy inclusion",
+            "KRAS G12C mutation offers additional targeted therapy options",
+            "Good performance status allows aggressive approach"
+        ],
+        "proposed_approach": "Multi-modality therapy with curative intent"
+    },
+    "treatment_options": [
+        {
+            "option": "Concurrent Chemoradiation + Immunotherapy",
+            "details": {
+                "sequence": [
+                    "Concurrent platinum-based chemotherapy with radiation",
+                    "Followed by consolidation durvalumab"
+                ],
+                "evidence_level": "Category 1",
+                "pros": [
+                    "Standard of care for stage IIIA",
+                    "Curative intent",
+                    "Strong evidence base"
+                ],
+                "cons": [
+                    "Treatment toxicity",
+                    "Duration of therapy"
+                ]
+            }
+        },
+        {
+            "option": "Clinical Trial",
+            "details": {
+                "description": "Novel combinations with KRAS G12C inhibitors",
+                "evidence_level": "Investigational",
+                "pros": [
+                    "Access to novel therapies",
+                    "High PD-L1 and KRAS G12C make good candidate"
+                ],
+                "cons": [
+                    "Availability uncertain",
+                    "Unknown efficacy"
+                ]
+            }
+        }
+    ],
+    "evaluation_score": 0.95,
+    "evaluation_comments": "Comprehensive assessment with evidence-based recommendations. All relevant molecular and clinical factors considered. Clear treatment prioritization provided."
+} 

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdt-agent-system"
+version = "0.1.0"
+# Add other metadata like authors, description, readme, requires-python, dependencies, etc. as needed
+# For now, we'll keep it minimal to just make the package findable.
+# If you have a requirements.txt, you might list dependencies here or keep them separate.
+
+[tool.setuptools.packages.find]
+where = ["."] # ["mdt_agent_system"] might be more precise if src layout used
+include = ["mdt_agent_system*"] # Adjust if your structure is different
+exclude = ["mdt_agent_system.tests*"] # Exclude test directories from the installed package 
