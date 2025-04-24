@@ -9,8 +9,10 @@ class MDTToolConfig(BaseModel):
 
 class MDTTool(BaseTool):
     """Base class for all MDT tools extending LangChain's BaseTool."""
-    name: str = Field(..., description="The name of the tool")
-    description: str = Field(..., description="A description of what the tool does")
+    name: str = Field("base_tool", description="The name of the tool")
+    description: str = Field("Base tool class", description="A description of what the tool does")
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="ignore")
     
     def __init__(self, **data: Any):
         super().__init__(**data)

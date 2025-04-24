@@ -7,7 +7,8 @@ from unittest.mock import patch, AsyncMock
 
 # Revert to original absolute imports
 from mdt_agent_system.app.main import app
-from mdt_agent_system.app.core.status.status_service import StatusUpdateService, StatusUpdate
+from mdt_agent_system.app.core.status.service import StatusUpdateService
+from mdt_agent_system.app.core.schemas.status import StatusUpdate
 from mdt_agent_system.app.api.endpoints import get_status_service
 
 # Use pytest-asyncio for async tests

@@ -17,7 +17,17 @@ class ToolRegistry:
                 GuidelineReferenceTool()
             ]
             for tool in default_tools:
-                cls.register_tool(tool)
+                if tool.name not in cls._tools:  # Check if the tool is already registered
+                    cls.register_tool(tool)
+        else:
+            # Ensure all default tools are registered even if some tools already exist
+            default_tools = [
+                PharmacologyReferenceTool(),
+                GuidelineReferenceTool()
+            ]
+            for tool in default_tools:
+                if tool.name not in cls._tools:  # Only register if not already present
+                    cls.register_tool(tool)
     
     @classmethod
     def register_tool(cls, tool: MDTTool) -> None:
@@ -57,7 +67,8 @@ class ToolRegistry:
         return {name: tool.description for name, tool in cls._tools.items()}
     
     @classmethod
-    def __len__(cls) -> int:
+    def tool_count(cls) -> int:
+        """Get the number of registered tools."""
         # Ensure defaults are registered
         cls._register_default_tools()
         

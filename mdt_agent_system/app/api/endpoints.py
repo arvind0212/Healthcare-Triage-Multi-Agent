@@ -9,6 +9,7 @@ import logging
 import asyncio # Added for sleep in SSE stream
 import os # For log file path
 from typing import List
+from datetime import datetime
 
 from mdt_agent_system.app.core.schemas.common import PatientCase, StatusUpdate
 # Import the actual status service instance getter
@@ -19,6 +20,7 @@ from mdt_agent_system.app.core.config.settings import settings
 from mdt_agent_system.app.core.logging.logger import run_id_context
 # Import the main simulation runner from the coordinator
 from mdt_agent_system.app.agents.coordinator import run_mdt_simulation
+from mdt_agent_system.app.core.samples.patient_case import get_sample_case
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -190,12 +192,132 @@ async def sse_generator(run_id: str, request: Request, status_service: StatusUpd
 
                 # Use model_dump_json for Pydantic v2
                 event_data = update.model_dump_json()
-                # Create ServerSentEvent with the sequential event_id from the update
-                sse_event = ServerSentEvent(
-                    data=event_data,
-                    event="status_update",
-                    id=str(update.event_id) # Set the ID for reconnection
-                )
+                
+                # DETAILED STATUS UPDATE LOGGING
+                print(f"\n===> SSE STATUS UPDATE: event_id={update.event_id}, status={update.status}, agent_id={update.agent_id}")
+                print(f"===> MESSAGE: {update.message}")
+                
+                # For all statuses, inspect details
+                if update.details:
+                    print(f"===> DETAILS: {update.details}")
+                    if isinstance(update.details, dict) and "report_data" in update.details:
+                        print("===> REPORT DATA FOUND IN DETAILS")
+                        if isinstance(update.details["report_data"], dict):
+                            print(f"===> REPORT KEYS: {update.details['report_data'].keys()}")
+                
+                # Check if this is a report status update (special handling)
+                if update.status == "REPORT" and "report_data" in update.details:
+                    # For report events, send the report_data directly with event type "report"
+                    print(f"===> SSE: FOUND REPORT STATUS with event_id: {update.event_id}")
+                    try:
+                        print(f"===> SSE: REPORT DETAILS TYPE: {type(update.details)}")
+                        print(f"===> SSE: REPORT_DATA TYPE: {type(update.details.get('report_data', 'MISSING'))}")
+                        
+                        # Make sure the report_data is valid
+                        report_data = update.details.get("report_data")
+                        if report_data is None:
+                            print("===> SSE: WARNING - EMPTY REPORT DATA")
+                            report_data = {
+                                "error": "Empty report data received",
+                                "timestamp": str(datetime.utcnow())
+                            }
+                        
+                        # Attempt to serialize
+                        try:
+                            report_json = json.dumps(report_data)
+                        except Exception as serialize_error:
+                            print(f"===> SSE: ERROR SERIALIZING REPORT: {serialize_error}")
+                            # Try fallback serialization
+                            report_json = json.dumps({
+                                "error": f"Failed to serialize report: {str(serialize_error)}",
+                                "timestamp": str(datetime.utcnow())
+                            })
+                            
+                        print(f"===> SSE: REPORT DATA SIZE: {len(report_json)} bytes")
+                        print(f"===> SSE: REPORT DATA PREVIEW: {report_json[:100]}...")
+                        
+                        # Break large reports into multiple smaller chunks if needed
+                        if len(report_json) > 1000000:  # If larger than ~1MB
+                            print(f"===> SSE: LARGE REPORT DETECTED - BREAKING INTO CHUNKS")
+                            # Send metadata first
+                            metadata = {
+                                "type": "report_metadata",
+                                "size": len(report_json),
+                                "chunks": (len(report_json) // 500000) + 1
+                            }
+                            yield ServerSentEvent(
+                                data=json.dumps(metadata),
+                                event="report_metadata",
+                                id=f"{update.event_id}_meta"
+                            )
+                            
+                            # Break into ~500KB chunks
+                            chunk_size = 500000
+                            for i in range(0, len(report_json), chunk_size):
+                                chunk = report_json[i:i+chunk_size]
+                                chunk_metadata = {
+                                    "chunk_index": i // chunk_size,
+                                    "total_chunks": (len(report_json) // chunk_size) + 1,
+                                    "data": chunk
+                                }
+                                print(f"===> SSE: SENDING CHUNK {i // chunk_size + 1} of {(len(report_json) // chunk_size) + 1}")
+                                
+                                # Add a small delay between chunks to avoid overwhelming the connection
+                                await asyncio.sleep(0.2)
+                                
+                                # Check connection before sending each chunk
+                                if await request.is_disconnected():
+                                    print(f"===> SSE: CLIENT DISCONNECTED DURING CHUNKED REPORT TRANSMISSION")
+                                    break
+                                    
+                                yield ServerSentEvent(
+                                    data=json.dumps(chunk_metadata),
+                                    event="report_chunk",
+                                    id=f"{update.event_id}_{i // chunk_size}"
+                                )
+                        else:
+                            # Regular report handling for smaller reports
+                            print("===> SSE: SENDING REGULAR REPORT EVENT")
+                            sse_event = ServerSentEvent(
+                                data=report_json,
+                                event="report",
+                                id=str(update.event_id)
+                            )
+                            logger.info(f"Emitting report event for run_id: {run_id}")
+                            yield sse_event
+                    except Exception as report_error:
+                        print(f"===> SSE: ERROR PROCESSING REPORT: {report_error}")
+                        logger.error(f"Error processing report for SSE: {report_error}", exc_info=True)
+                        # Send an error event to notify the client
+                        error_data = {
+                            "error": f"Failed to process report data: {str(report_error)}",
+                            "timestamp": str(datetime.utcnow())
+                        }
+                        yield ServerSentEvent(
+                            data=json.dumps(error_data),
+                            event="error",
+                            id=str(update.event_id)
+                        )
+                        # Also try to send a minimal report as fallback
+                        minimal_report = {
+                            "patient_id": "error_recovery",
+                            "summary": "Error processing report data. Check logs.",
+                            "timestamp": str(datetime.utcnow()),
+                            "error": str(report_error)
+                        }
+                        yield ServerSentEvent(
+                            data=json.dumps(minimal_report),
+                            event="report",
+                            id=f"{update.event_id}_recovery"
+                        )
+                else:
+                    # Regular status update
+                    sse_event = ServerSentEvent(
+                        data=event_data,
+                        event="status_update",
+                        id=str(update.event_id) # Set the ID for reconnection
+                    )
+                
                 yield sse_event
                 queue.task_done() # Mark item as processed
 
@@ -328,4 +450,47 @@ async def get_agent_state(run_id: str, agent_id: str):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve agent state logs.")
 
     logger.info(f"Retrieved {len(agent_logs)} log entries for run_id: {run_id}, agent_id: {agent_id}")
-    return agent_logs 
+    return agent_logs
+
+@router.get("/report/{run_id}", tags=["Simulation"], response_model=dict)
+async def get_report(run_id: str):
+    """
+    Endpoint to retrieve the report for a given run_id directly (non-SSE).
+    This is an alternative to using the SSE stream for clients that have issues with SSE.
+    """
+    logger.info(f"Direct report retrieval request for run_id: {run_id}")
+    
+    try:
+        # First, check if the report file exists
+        report_file_path = f"report_{run_id}.json"
+        
+        if os.path.exists(report_file_path):
+            logger.info(f"Found report file for run_id: {run_id}")
+            with open(report_file_path, "r") as file:
+                report_data = json.load(file)
+                return report_data
+                
+        # If file doesn't exist, check if we have any report in the status service
+        status_service = get_status_service()
+        if hasattr(status_service, "active_runs") and run_id in status_service.active_runs:
+            for update in status_service.active_runs[run_id]:
+                if update.status == "REPORT" and hasattr(update, "details") and update.details:
+                    if isinstance(update.details, dict) and "report_data" in update.details:
+                        logger.info(f"Found report in status updates for run_id: {run_id}")
+                        return update.details["report_data"]
+        
+        # If all else fails, try to create a minimal report
+        logger.warning(f"No report found for run_id: {run_id}, creating minimal report")
+        return {
+            "patient_id": run_id,
+            "summary": "No report data available. The report may still be processing or failed to generate.",
+            "timestamp": str(datetime.utcnow()),
+            "error": "Report not found in storage or status service."
+        }
+    
+    except Exception as e:
+        logger.error(f"Error retrieving report for run_id {run_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving report: {str(e)}"
+        ) 

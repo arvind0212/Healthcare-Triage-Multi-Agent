@@ -5,13 +5,14 @@ from mdt_agent_system.app.core.tools import (
     GuidelineReferenceTool,
     ToolRegistry
 )
+from pydantic import Field
 from unittest.mock import MagicMock
 
 def test_base_tool():
     """Test the base MDTTool class."""
     class TestTool(MDTTool):
-        name = "test_tool"
-        description = "A test tool"
+        name: str = Field("test_tool", description="The name of the tool")
+        description: str = Field("A test tool", description="A description of what the tool does")
         
         def _run(self, **kwargs):
             return {"status": "success"}
@@ -60,7 +61,7 @@ def test_tool_registry():
     ToolRegistry._register_default_tools()
     
     # Test default tools are registered
-    assert len(ToolRegistry) > 0
+    assert ToolRegistry.tool_count() > 0
     assert "pharmacology_reference" in ToolRegistry.list_tools()
     assert "guideline_reference" in ToolRegistry.list_tools()
     

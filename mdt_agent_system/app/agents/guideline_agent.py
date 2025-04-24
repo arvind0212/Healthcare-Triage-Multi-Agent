@@ -39,9 +39,14 @@ class GuidelineAgent(BaseSpecializedAgent):
             callbacks=callbacks
         )
         
-        # Register and make available the guidelines tool
-        self.guideline_tool = GuidelineReferenceTool()
-        ToolRegistry.register_tool(self.guideline_tool)
+        # Check if the guideline tool is already registered before adding it
+        if "guideline_reference" not in ToolRegistry.list_tools():
+            # Register and make available the guidelines tool
+            self.guideline_tool = GuidelineReferenceTool()
+            ToolRegistry.register_tool(self.guideline_tool)
+        else:
+            # Tool already exists, just reference it
+            self.guideline_tool = ToolRegistry.get_tool("guideline_reference")
         
     def _get_agent_type(self) -> str:
         """Return the agent type for prompt template selection."""

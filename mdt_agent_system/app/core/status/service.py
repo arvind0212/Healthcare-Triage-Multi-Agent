@@ -6,6 +6,7 @@ from mdt_agent_system.app.core.status.storage import JSONStore
 from mdt_agent_system.app.core.logging.logger import get_logger
 from mdt_agent_system.app.core.config.settings import settings
 import os
+import json
 
 logger = get_logger(__name__)
 
@@ -84,6 +85,164 @@ class StatusUpdateService:
             logger.error(f"Failed to emit status update for run_id {run_id}: {e}", exc_info=True)
             # Rollback counter if emission failed? Consider implications.
             # self.run_event_counters[run_id] -= 1 # Be careful with concurrency if added
+
+    async def emit_report(self, run_id: str, report_data: Dict[str, Any]):
+        """Emit a report event to all subscribers for a given run.
+        
+        This differs from status updates as it uses the 'report' event type
+        instead of 'status_update' to trigger the report display in the UI.
+        
+        Args:
+            run_id: The run ID to emit the report for
+            report_data: The report data to emit
+        """
+        print(f"===> SERVICE.EMIT_REPORT CALLED for run_id: {run_id}")
+        try:
+            # Ensure report_data is a proper dictionary
+            if not isinstance(report_data, dict):
+                print(f"===> WARNING: report_data is not a dict but {type(report_data)}. Attempting to convert.")
+                try:
+                    # Try to convert to dict if it's a Pydantic model
+                    if hasattr(report_data, 'dict'):
+                        report_data = report_data.dict()
+                        print("===> Converted using .dict() method")
+                    elif hasattr(report_data, 'model_dump'):
+                        report_data = report_data.model_dump()
+                        print("===> Converted using .model_dump() method")
+                    elif hasattr(report_data, '__dict__'):
+                        report_data = report_data.__dict__
+                        print("===> Converted using .__dict__ attribute")
+                    else:
+                        # Last resort: convert to string and back to dict
+                        import json
+                        report_data = json.loads(json.dumps(report_data, default=str))
+                        print("===> Converted using json dumps/loads")
+                except Exception as conv_error:
+                    print(f"===> ERROR CONVERTING REPORT DATA: {conv_error}")
+                    # Create a minimal valid report
+                    report_data = {
+                        "patient_id": str(getattr(report_data, "patient_id", "unknown")),
+                        "summary": "Report conversion error",
+                        "timestamp": str(datetime.utcnow()),
+                        "error": str(conv_error),
+                        "original_type": str(type(report_data))
+                    }
+            
+            # Basic validation to ensure the report isn't too large
+            report_json = json.dumps(report_data)
+            report_size = len(report_json)
+            print(f"===> REPORT SIZE: {report_size} bytes")
+            
+            if report_size > 10000000:  # 10MB size limit
+                print(f"===> WARNING: Report is very large ({report_size} bytes), may cause streaming issues")
+                # Simplify report if too large
+                try:
+                    # Create a simplified version with just essential data
+                    simplified_report = {
+                        "patient_id": report_data.get("patient_id", "Unknown"),
+                        "summary": report_data.get("summary", "Report summary not available"),
+                        "timestamp": report_data.get("timestamp", str(datetime.utcnow())),
+                        "note": "Full report data was too large to stream - simplified version provided"
+                    }
+                    
+                    # Keep essential sections with limited data
+                    for section in ["ehr_analysis", "imaging_analysis", "pathology_analysis", 
+                                    "specialist_assessment"]:
+                        if section in report_data and isinstance(report_data[section], dict):
+                            # Just keep the summary from each section
+                            simplified_report[section] = {
+                                "summary": report_data[section].get("summary", f"{section} summary not available")
+                            }
+                    
+                    # Keep a few recommendations if present
+                    if "guideline_recommendations" in report_data and isinstance(report_data["guideline_recommendations"], list):
+                        simplified_report["guideline_recommendations"] = report_data["guideline_recommendations"][:3]
+                    
+                    # Keep a few treatment options if present
+                    if "treatment_options" in report_data and isinstance(report_data["treatment_options"], list):
+                        simplified_report["treatment_options"] = report_data["treatment_options"][:3]
+                    
+                    report_data = simplified_report
+                    print(f"===> REPORT SIMPLIFIED to reduce size")
+                except Exception as simplify_error:
+                    print(f"===> FAILED TO SIMPLIFY REPORT: {simplify_error}")
+            
+            # Create a special status update for the report
+            event_id = self._get_next_event_id(run_id)
+            update = StatusUpdate(
+                run_id=run_id,
+                event_id=event_id,
+                agent_id="Coordinator",
+                status="REPORT",
+                message="MDT Report Generated",
+                timestamp=datetime.utcnow(),
+                details={"report_data": report_data}
+            )
+            
+            print(f"===> CREATED REPORT STATUS UPDATE with event_id: {update.event_id}")
+            
+            # Store in memory cache
+            if run_id not in self.active_runs:
+                self.active_runs[run_id] = []
+            self.active_runs[run_id].append(update)
+            
+            # We might not want to persist reports in the status updates due to size
+            # but we'll keep it for now for consistency
+            self._persist_run_updates(run_id)
+            
+            # Notify live subscribers with this special update
+            if run_id in self.subscribers:
+                print(f"===> RUN_ID {run_id} HAS {len(self.subscribers[run_id])} SUBSCRIBERS")
+                # Create tasks to put items in queues concurrently
+                tasks = []
+                for queue in self.subscribers[run_id]:
+                    # This is the key change - we're directly creating a custom event object
+                    # with the 'report' event type that the frontend expects
+                    tasks.append(queue.put(update))
+                if tasks:
+                    await asyncio.gather(*tasks)
+                    print(f"===> SENT REPORT TO {len(tasks)} SUBSCRIBERS")
+                else:
+                    print("===> NO TASKS CREATED FOR SUBSCRIBERS")
+            else:
+                print(f"===> NO SUBSCRIBERS FOR RUN_ID: {run_id}")
+                
+            logger.info(f"Report emitted for run_id: {run_id}")
+            
+        except Exception as e:
+            print(f"===> ERROR IN EMIT_REPORT: {e}")
+            logger.error(f"Failed to emit report for run_id {run_id}: {e}", exc_info=True)
+            
+            # Try emergency fallback
+            try:
+                print("===> TRYING EMERGENCY REPORT FALLBACK")
+                # Create an extremely simple report to bypass any serialization issues
+                minimal_report = {
+                    "patient_id": "emergency",
+                    "summary": "Error generating proper report. Check logs.",
+                    "timestamp": str(datetime.utcnow()),
+                    "error": str(e)
+                }
+                
+                # Create status update with minimal report
+                fallback_event_id = self._get_next_event_id(run_id)
+                fallback_update = StatusUpdate(
+                    run_id=run_id,
+                    event_id=fallback_event_id,
+                    agent_id="System",
+                    status="REPORT",
+                    message="Emergency Report Fallback",
+                    timestamp=datetime.utcnow(),
+                    details={"report_data": minimal_report}
+                )
+                
+                # Notify subscribers directly
+                if run_id in self.subscribers:
+                    for queue in self.subscribers[run_id]:
+                        await queue.put(fallback_update)
+                    print("===> EMERGENCY REPORT FALLBACK SENT")
+            except Exception as fallback_error:
+                print(f"===> EMERGENCY REPORT FALLBACK FAILED: {fallback_error}")
 
     def _persist_run_updates(self, run_id: str):
         """Persist all status updates for a specific run to the store."""

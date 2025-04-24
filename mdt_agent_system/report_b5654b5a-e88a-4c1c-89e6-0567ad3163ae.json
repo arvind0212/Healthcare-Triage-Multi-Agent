@@ -1,0 +1,133 @@
+{
+  "patient_id": "MDT2024001",
+  "summary": "MDT Simulation Complete (Runnable Workflow)",
+  "ehr_analysis": {
+    "summary": "The diagnosis remains presumptive until confirmed by histopathological examination.  The severity of the patient's comorbidities and their impact on treatment tolerance requires further assessment.  The patient's functional status needs to be fully evaluated to determine her ability to tolerate potentially intensive treatment regimens.",
+    "details": {
+      "summary": "The diagnosis remains presumptive until confirmed by histopathological examination.  The severity of the patient's comorbidities and their impact on treatment tolerance requires further assessment.  The patient's functional status needs to be fully evaluated to determine her ability to tolerate potentially intensive treatment regimens.",
+      "key_history_points": [],
+      "current_presentation": {
+        "main_symptoms": [],
+        "performance_status": "",
+        "comorbidity_impact": "** The patient has well-controlled Type 2 Diabetes Mellitus (T2DM) and Hypertension, managed with Metformin and Lisinopril respectively.  She also has Osteoarthritis affecting her knees and hands, managed with PRN NSAIDs.  These comorbidities will need careful consideration during treatment planning due to potential drug interactions and increased risk of complications."
+      },
+      "risk_factors": [],
+      "clinical_implications": [],
+      "raw_output": "**EHR Analysis Agent Report - Patient ID: MDT2024001**\n\n**1. Key History Points:**\n\n* **Chronological Progression of Symptoms:** The patient, a 62-year-old Caucasian female, presents with a persistent cough (onset January 15th, 2024) initially described as moderate to severe, now complicated by occasional blood-tinged sputum.  This is accompanied by significant weight loss (5kg in 3 months), fatigue, decreased appetite, and night sweats \u2013 all highly suggestive of a serious underlying pathology, potentially malignancy.\n\n* **Comorbidities:** The patient has well-controlled Type 2 Diabetes Mellitus (T2DM) and Hypertension, managed with Metformin and Lisinopril respectively.  She also has Osteoarthritis affecting her knees and hands, managed with PRN NSAIDs.  These comorbidities will need careful consideration during treatment planning due to potential drug interactions and increased risk of complications.\n\n* **Social and Functional Factors:** The patient is a retired teacher, suggesting a previously active lifestyle, now potentially impacted by her current illness.  Her functional status needs further assessment.\n\n* **Risk Factors:**  Former smoker (quit 10 years ago) increases the risk of respiratory malignancy.  Age (62) also places her in a higher risk category for various cancers.  The combination of weight loss, cough, hemoptysis, and lymphadenopathy raises significant concern for lung cancer.\n\n**2. Current Clinical Status:**\n\n* **Symptoms:**  Persistent cough with hemoptysis, unintentional weight loss, fatigue, decreased appetite, and night sweats are highly suggestive of malignancy, particularly lung cancer.\n\n* **Physical Exam:** Decreased breath sounds in the right upper lobe and right supraclavicular lymphadenopathy strongly support the suspicion of lung cancer.  Vital signs are relatively stable, although the slightly elevated blood pressure (132/82) requires monitoring.\n\n* **Laboratory Results:**  The complete blood count (CBC) shows normal hemoglobin, WBC, and platelet counts, which doesn't definitively rule out malignancy but does not reveal overt cytopenias.  The basic metabolic panel (BMP) is largely unremarkable, showing normal creatinine, slightly elevated AST (32 U/L) and ALT (28 U/L) which could be related to the underlying condition or medications.  Albumin is within the normal range.  Further investigations are needed.\n\n**3. Relevant Risk Factors:**\n\n* **Age:** 62 years\n* **Gender:** Female (lung cancer is more common in males, but this doesn't preclude the diagnosis)\n* **Smoking history:** Former smoker\n* **Symptoms:**  Highly suggestive of lung cancer (cough, hemoptysis, weight loss, fatigue, night sweats, lymphadenopathy)\n\n**4. Performance Status Assessment:**\n\nA more detailed assessment is needed using tools like the Eastern Cooperative Oncology Group (ECOG) performance status scale or the Karnofsky Performance Status scale.  Based on the presented information, a preliminary assessment suggests a performance status of 2-3 (moderate to severe limitations in activity).  Further evaluation is crucial for accurate staging and treatment planning.\n\n**5. Clinical Implications:**\n\nThe clinical picture strongly suggests the need for urgent further investigation to determine the cause of the patient's symptoms.  This should include:\n\n* **Chest X-ray:** To confirm the physical exam findings.\n* **CT scan of the chest and abdomen/pelvis:**  To stage the potential lung cancer and identify any metastases.\n* **Bronchoscopy with bronchoalveolar lavage (BAL) and biopsy:** To obtain tissue samples for histopathological examination and cytology.  This is crucial for definitive diagnosis.\n* **PET scan:** To assess for distant metastases.\n* **Further blood tests:**  Tumor markers (e.g., CEA, CYFRA 21-1) should be considered.\n\n**Treatment planning will depend heavily on the results of these investigations.**  The presence of comorbidities (T2DM and hypertension) needs to be carefully managed to minimize treatment-related adverse effects.  The impact of the patient's performance status on treatment tolerance will also be a key factor.  A multidisciplinary team (MDT) meeting involving oncologists, radiologists, pathologists, and potentially pulmonologists is essential for optimal treatment planning.  This MDT approach will ensure patient-centered care, balancing the potential benefits and risks of various treatment options while considering the patient's overall health and preferences.\n\n\n**Limitations and Uncertainties:**\n\nThe diagnosis remains presumptive until confirmed by histopathological examination.  The severity of the patient's comorbidities and their impact on treatment tolerance requires further assessment.  The patient's functional status needs to be fully evaluated to determine her ability to tolerate potentially intensive treatment regimens."
+    }
+  },
+  "imaging_analysis": {
+    "summary": "**Imaging Analysis Report - Patient ID: MDT2024001**",
+    "details": {
+      "summary": "**Imaging Analysis Report - Patient ID: MDT2024001**",
+      "disease_extent": {
+        "primary_tumor": "** 3.8 x 3.2 cm (CT Chest).",
+        "nodal_status": "** To obtain tissue samples for histopathological diagnosis and to directly assess mediastinal lymph node involvement. This is crucial for definitive staging and treatment planning.",
+        "metastatic_status": "** Although the PET-CT did not show bony metastases, this could be considered if bone pain or elevated alkaline phosphatase is present."
+      },
+      "staging": {
+        "clinical_stage": "",
+        "key_findings": [
+          "* **Chest X-ray (2024-02-01):** Demonstrates a 3.5 cm mass in the right upper lobe with associated hilar lymphadenopathy.  The finding is highly suggestive of a primary lung malignancy.  Limited in its ability to fully characterize the lesion or assess for distant metastases.",
+          "* **CT Chest (2024-02-05):**  Reveals a 3.8 x 3.2 cm spiculated mass in the right upper lobe, consistent with malignancy.  Multiple enlarged right hilar and mediastinal lymph nodes are present. No evidence of distant metastases is identified. Mild emphysematous changes are noted in the upper lobes.",
+          "* **PET-CT (2024-02-12):** Confirms the presence of a highly FDG-avid right upper lobe mass (SUVmax 12.4), indicating high metabolic activity characteristic of malignancy.  FDG-avid right hilar and mediastinal lymph nodes (SUVmax 8.2) are also present, confirming lymph node involvement. No evidence of distant metastatic disease is detected.",
+          "* **Primary Lesion:** 3.8 x 3.2 cm (CT Chest).",
+          "Based on the imaging findings, the patient presents with a large primary lung mass in the right upper lobe with involvement of regional lymph nodes (hilar and mediastinal).  There is no evidence of distant metastases based on the available imaging.  This strongly suggests a Stage IIIA Non-Small Cell Lung Cancer (NSCLC) according to the 8th edition TNM staging system.  However, this is a presumptive staging based on imaging alone and requires confirmation by histopathological examination of tissue obtained via biopsy.  The exact T, N, and M classifications need confirmation through tissue diagnosis and potentially further staging investigations.",
+          "The primary lesion is located in the right upper lobe, close to the hilum.  The involvement of hilar and mediastinal lymph nodes suggests locoregional spread.  The relationship of the tumor to major vessels and the trachea requires further assessment, potentially via bronchoscopy and endobronchial ultrasound (EBUS) or mediastinoscopy.  The mild emphysema may influence surgical planning.",
+          "* **Further CT evaluation:** A high resolution CT scan might help to further define the extent of the lesion and the relationship with adjacent structures."
+        ]
+      },
+      "treatment_implications": []
+    }
+  },
+  "pathology_analysis": {
+    "summary": "**Pathology Analysis Agent Report - Patient ID: MDT2024001**",
+    "details": {
+      "summary": "**Pathology Analysis Agent Report - Patient ID: MDT2024001**",
+      "histology": "**  A detailed review of the microscopic slides to determine the precise histological subtype and grade of the adenocarcinoma. This will refine the prognosis and inform treatment decisions.",
+      "molecular_profile": {
+        "key_mutations": "Key mutations not specified",
+        "immunotherapy_markers": "**  Given the high PD-L1 expression, immunotherapy with a PD-1 or PD-L1 inhibitor (e.g., pembrolizumab, nivolumab, atezolizumab) should be strongly considered, potentially in combination with chemotherapy or a KRAS G12C inhibitor.  The optimal combination strategy would require discussion within the MDT.",
+        "other_markers": {
+          "EGFR": "** Wild type \u2013 This excludes the use of EGFR tyrosine kinase inhibitors (TKIs) as a first-line treatment option.",
+          "ALK": "** No rearrangement \u2013 This excludes ALK TKIs.",
+          "ROS1": "** No rearrangement \u2013 This excludes ROS1 TKIs.",
+          "KRAS": "**  Sotorasib or adagrasib are strong candidates for first-line treatment.  Response rates to these agents are not 100%, and careful monitoring for toxicity and response is essential."
+        }
+      },
+      "therapeutic_implications": [
+        "The provided data does not include information on the grade and differentiation of the adenocarcinoma.  This information is crucial for prognosis and treatment planning and should be obtained from the microscopic examination of the biopsy.  The presence of a KRAS mutation suggests a potentially more aggressive phenotype, but this needs to be correlated with histological grading.",
+        "* **EGFR:** Wild type \u2013 This excludes the use of EGFR tyrosine kinase inhibitors (TKIs) as a first-line treatment option.",
+        "* **KRAS:** G12C mutation detected \u2013 This is a significant finding.  The presence of a KRAS G12C mutation identifies a specific therapeutic target.  Sotorasib and adagrasib are FDA-approved therapies targeting this mutation.",
+        "* **PD-L1:** 80% expression \u2013 This high PD-L1 expression suggests the patient may benefit from immunotherapy, either as a monotherapy or in combination with chemotherapy or targeted therapy.  The exact threshold for immunotherapy eligibility can vary depending on the specific assay used and treatment guidelines.",
+        "**5. Therapeutic Targets:**",
+        "Based on the molecular and biomarker data, the primary therapeutic targets are the KRAS G12C mutation and the high PD-L1 expression.",
+        "* **KRAS G12C-targeted therapy:**  Sotorasib or adagrasib are strong candidates for first-line treatment.  Response rates to these agents are not 100%, and careful monitoring for toxicity and response is essential.",
+        "* **Immunotherapy:**  Given the high PD-L1 expression, immunotherapy with a PD-1 or PD-L1 inhibitor (e.g., pembrolizumab, nivolumab, atezolizumab) should be strongly considered, potentially in combination with chemotherapy or a KRAS G12C inhibitor.  The optimal combination strategy would require discussion within the MDT.",
+        "* **Chemotherapy:**  Depending on the patient's overall health, performance status, and response to targeted therapy, chemotherapy might be considered as a component of combination therapy.  However, given the availability of targeted therapy for the KRAS mutation, chemotherapy might not be the first-line choice in this case.",
+        "1. **Histological review:**  A detailed review of the microscopic slides to determine the precise histological subtype and grade of the adenocarcinoma. This will refine the prognosis and inform treatment decisions.",
+        "2. **Comprehensive genomic profiling:**  While KRAS G12C has been identified, broader genomic profiling might reveal additional targetable mutations or alterations that could influence treatment choices.  This is particularly relevant given the presence of other negative molecular markers.  This testing could reveal other genomic alterations that may be actionable",
+        "3. **Assessment of performance status:** A formal assessment using the ECOG or Karnofsky performance scale is necessary to evaluate the patient's fitness for various treatment regimens.",
+        "4. **Further staging investigations:**  While imaging suggests a Stage IIIA, the exact TNM staging requires confirmation through histopathological examination of lymph nodes (obtained via mediastinoscopy or EBUS) and assessment of distant metastasis.  This is critical for accurate staging and treatment planning.  Further imaging (e.g., high resolution CT) may also be beneficial in refining the extent of local disease.",
+        "The current analysis is based on limited data. The absence of detailed histological information and the need for further staging investigations represent significant limitations.  Treatment decisions must be made within the context of a comprehensive MDT discussion, considering the patient's overall health, comorbidities, and preferences.  The response to therapy will require close monitoring."
+      ]
+    }
+  },
+  "guideline_recommendations": [
+    {
+      "guideline": "Clinical Practice Guidelines",
+      "version": "Current",
+      "category": "Treatment Recommendations",
+      "recommendations": [
+        "Based on the provided data, the patient presents with a highly suspicious case of advanced Non-Small Cell Lung Cancer (NSCLC), likely stage IIIA, given the imaging findings.  However, definitive diagnosis and staging require histopathological confirmation of the tumor type, grade, and lymph node status.  The presence of a KRAS G12C mutation and high PD-L1 expression significantly impacts treatment decisions.",
+        "* **National Comprehensive Cancer Network (NCCN) Guidelines for Lung Cancer:**  This is the primary guideline to determine treatment strategies for NSCLC, considering the stage, histology, and molecular profile.  Specific recommendations will depend on the final pathological diagnosis and staging.",
+        "* **American Society of Clinical Oncology (ASCO) Guidelines for Lung Cancer:**  ASCO guidelines provide additional perspectives and recommendations for lung cancer management.",
+        "**2. Guideline-based Treatment Options:**",
+        "Given the KRAS G12C mutation and high PD-L1 expression, the following treatment approaches are indicated based on current guidelines, pending final pathology and staging:",
+        "* **KRAS G12C-targeted therapy:** Sotorasib or adagrasib are FDA-approved first-line options for KRAS G12C-mutated NSCLC.  The choice between these two depends on factors such as potential side effects and patient-specific considerations.  (Evidence Level: 1A - High-quality randomized controlled trials demonstrating significant benefit)",
+        "* **Immunotherapy:**  Due to the high PD-L1 expression (80%), immunotherapy with a PD-1 or PD-L1 inhibitor (e.g., pembrolizumab, nivolumab, atezolizumab) is strongly recommended, potentially as a monotherapy or in combination with chemotherapy or targeted therapy.  The optimal approach needs discussion within an MDT. (Evidence Level: 1A - High-quality randomized controlled trials showing benefit in similar patient populations)",
+        "* **Chemotherapy:**  While targeted therapy and immunotherapy are preferred in this scenario, chemotherapy might be considered as part of a combination regimen, particularly if the patient does not respond adequately to initial targeted therapy or immunotherapy.  (Evidence Level: 1B -  High-quality randomized controlled trials showing benefit in some contexts)",
+        "Given the patient's characteristics (advanced NSCLC, KRAS G12C mutation, high PD-L1 expression), she may be eligible for several clinical trials investigating novel therapies targeting KRAS or PD-L1, or evaluating combination strategies.  A comprehensive search of clinical trials relevant to her specific molecular profile and stage should be undertaken. (Evidence Level: Varies by trial, but potentially 1A for trials with positive results)",
+        "* **Comorbidities:**  The patient's well-controlled Type 2 Diabetes and Hypertension require careful monitoring and management to minimize treatment-related complications and potential drug interactions.",
+        "* **Performance Status:** A formal performance status assessment (ECOG or Karnofsky) is crucial to determine the patient's ability to tolerate intensive treatment regimens.",
+        "* **Age:**  While age is a factor, it should not preclude consideration of aggressive treatment options if the patient's performance status allows.",
+        "* **Patient Preferences:**  Treatment decisions should always be made in close collaboration with the patient, respecting her values and preferences.",
+        "There are no deviations from standard practice at this stage.  The recommendations are entirely in line with current evidence-based guidelines.  However, the plan is contingent upon the final pathological diagnosis and staging.",
+        "1. **Obtain definitive pathology report:** This is paramount for accurate staging and treatment selection.",
+        "3. **Multidisciplinary Team (MDT) Meeting:**  An MDT meeting is essential to discuss the case, integrate all findings, and formulate a personalized treatment plan that considers the patient's overall health, preferences, and the available treatment options.",
+        "4. **Clinical trial search:**  A comprehensive search for relevant clinical trials should be performed.",
+        "The Guideline Agent will continue to monitor this case and provide updates as new information becomes available.  The treatment plan will be refined based on the results of the above steps."
+      ]
+    }
+  ],
+  "specialist_assessment": {
+    "summary": "**",
+    "details": {
+      "overall_assessment": "**",
+      "treatment_considerations": [
+        "**Performance Status:**  Requires formal assessment (ECOG/Karnofsky) to guide treatment intensity.  Preliminary assessment suggests ECOG 2-3 based on symptoms.",
+        "**Comorbidities:** Well-controlled Type 2 Diabetes and Hypertension, Osteoarthritis.  These require careful monitoring and management to minimize treatment-related complications and drug interactions.",
+        "**Smoking History:** Former smoker (10 years quit) \u2013 increases baseline risk.",
+        "**Social/Functional Status:** Retired teacher; functional status needs evaluation to assess treatment tolerance and quality of life impact.",
+        "*4. Treatment Options:**"
+      ],
+      "risk_assessment": "**",
+      "proposed_approach": "* **First-line treatment:**  Sotorasib or adagrasib (KRAS G12C inhibitors) are strong candidates, given the presence of the KRAS G12C mutation.  The choice will depend on individual patient factors and potential side effects.",
+      "follow_up_recommendations": [
+        "**Multidisciplinary Team (MDT) Meeting:**  Immediate MDT meeting to review the case, discuss treatment options, and develop a personalized treatment plan.",
+        "**Regular Monitoring:**  Close monitoring of treatment response, toxicity, and comorbidities throughout treatment.",
+        "**Supportive Care:**  Provision of supportive care to manage treatment-related side effects and maintain quality of life.",
+        "**Re-evaluation:**  Regular re-evaluation of the treatment plan based on response and tolerance.",
+        "*Disclaimer:** This assessment is based on the information provided.  A comprehensive in-person evaluation is necessary for a definitive diagnosis and treatment plan.  This report does not constitute medical advice and should not be used as a substitute for professional medical care."
+      ]
+    }
+  },
+  "treatment_options": [
+    {
+      "option": "Placeholder Treatment Option"
+    }
+  ],
+  "evaluation_score": 0.0,
+  "evaluation_comments": "**",
+  "timestamp": "2025-04-24T10:41:44.839079"
+}

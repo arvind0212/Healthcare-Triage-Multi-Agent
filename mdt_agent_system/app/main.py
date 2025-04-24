@@ -3,6 +3,8 @@ import logging.config
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
 from mdt_agent_system.app.core.config.settings import settings
 from mdt_agent_system.app.core.logging.log_config import LOGGING_CONFIG
@@ -41,6 +43,19 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Mount static files
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+app.mount("/static", StaticFiles(directory=static_dir, html=True), name="static")
+
+@app.get("/", tags=["UI"])
+async def root():
+    """
+    Root endpoint that serves the main UI page.
+    """
+    from fastapi.responses import FileResponse
+    index_path = os.path.join(static_dir, "index.html")
+    return FileResponse(index_path)
+
 @app.get("/health", tags=["Health Check"])
 def health_check():
     """
@@ -50,7 +65,7 @@ def health_check():
 
 # Add API routers
 from .api import endpoints
-app.include_router(endpoints.router)
+app.include_router(endpoints.router, prefix="/api")
 
 if __name__ == "__main__":
     # Use settings object directly

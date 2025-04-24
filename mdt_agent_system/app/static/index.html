@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDT Agent System</title>
+    <!-- Add cache-busting parameter -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <!-- Inter font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css?v=20250424">
+    <!-- Mermaid.js for workflow visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>MDT Agent System</h1>
+            <div class="disclaimer">
+                <p>This system simulates a Multi-Disciplinary Team meeting for healthcare case review using synthetic data only. Not for clinical use.</p>
+            </div>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <div class="file-input-container">
+                    <h2>Upload Patient Case</h2>
+                    <input type="file" id="fileInput" accept=".json" class="file-input">
+                    <label for="fileInput" class="file-input-label">Select JSON File</label>
+                    <p class="file-name" id="fileName">No file selected</p>
+                </div>
+                <button id="runSimulation" class="primary-button" disabled>Run Simulation</button>
+            </section>
+
+            <section class="visualization-section">
+                <h2>Workflow Visualization</h2>
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-indicator"></span>
+                    <span class="status-text">Not connected</span>
+                </div>
+                <div class="workflow-container">
+                    <div id="mermaidGraph" class="mermaid">
+                        graph TD
+                            coordinator(Coordinator) --> ehr(EHR Agent)
+                            coordinator --> imaging(Imaging Agent)
+                            coordinator --> pathology(Pathology Agent)
+                            coordinator --> guideline(Guideline Agent)
+                            coordinator --> specialist(Specialist Agent)
+                            coordinator --> evaluation(Evaluation Agent)
+                    </div>
+                </div>
+            </section>
+
+            <section class="output-section">
+                <h2>MDT Report</h2>
+                <!-- Add Run ID input field -->
+                <div class="run-id-container" style="margin-bottom: 15px; display: flex; gap: 10px;">
+                    <input type="text" id="runIdInput" placeholder="Enter Run ID" style="padding: 8px; flex-grow: 1;">
+                    <button id="manualFetchButton" class="primary-button" style="background-color: #f0ad4e;">Fetch Report Manually</button>
+                </div>
+                <div class="report-container">
+                    <button id="fetchDirectButton" class="primary-button" style="background-color: #f0ad4e; margin-bottom: 10px;">Fetch Report Directly</button>
+                    <pre id="reportOutput">No report generated yet</pre>
+                    <button id="copyReport" class="secondary-button" disabled>Copy Report</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>© 2025 MDT Agent System - Updated Version</p>
+        </footer>
+    </div>
+
+    <!-- Add inline script for manual fetch button -->
+    <script>
+        // Simple function to manually fetch report by ID
+        document.getElementById('manualFetchButton').addEventListener('click', async function() {
+            const runId = document.getElementById('runIdInput').value.trim();
+            if (!runId) {
+                alert('Please enter a Run ID');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/report/${runId}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch report: ${response.statusText}`);
+                }
+                
+                const reportData = await response.json();
+                document.getElementById('reportOutput').textContent = JSON.stringify(reportData, null, 2);
+                console.log("Report fetched manually:", reportData);
+            } catch (error) {
+                console.error('Error fetching report:', error);
+                alert(`Error: ${error.message}`);
+            }
+        });
+    </script>
+    <!-- Load main app script with cache busting -->
+    <script src="/static/app.js?v=20250424"></script>
+</body>
+</html> 

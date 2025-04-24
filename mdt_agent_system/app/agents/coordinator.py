@@ -2,6 +2,7 @@ import logging
 import asyncio # Added for simulating work
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
+import traceback  # Add traceback import
 
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, RunnableConfig
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
@@ -470,6 +471,97 @@ async def run_mdt_simulation(
             evaluation_comments=final_context.evaluation.get("comments") if final_context.evaluation else None,
             timestamp=datetime.utcnow(),
         )
+        
+        print("\n\n============ DIRECT CONSOLE OUTPUT OF FINAL REPORT ============")
+        print("PATIENT ID:", final_context.patient_case.patient_id)
+        print("EHR ANALYSIS:", final_context.ehr_analysis)
+        print("IMAGING ANALYSIS:", final_context.imaging_analysis)
+        print("PATHOLOGY ANALYSIS:", final_context.pathology_analysis)
+        print("GUIDELINE RECOMMENDATIONS:", final_context.guideline_recommendations)
+        print("SPECIALIST ASSESSMENT:", final_context.specialist_assessment)
+        print("EVALUATION:", final_context.evaluation)
+        
+        print("\n======= AGENT OUTPUTS RAW DATA =======")
+        if hasattr(final_context.ehr_analysis, 'dict'):
+            print("EHR OUTPUT:", final_context.ehr_analysis.dict())
+        
+        if hasattr(final_context.imaging_analysis, 'dict'):
+            print("IMAGING OUTPUT:", final_context.imaging_analysis.dict())
+        
+        if hasattr(final_context.pathology_analysis, 'dict'):
+            print("PATHOLOGY OUTPUT:", final_context.pathology_analysis.dict())
+        
+        if hasattr(final_context.specialist_assessment, 'dict'):
+            print("SPECIALIST OUTPUT:", final_context.specialist_assessment.dict())
+        
+        # Also try to directly create a JSON string of the report
+        import json
+        try:
+            from pydantic import BaseModel
+            if isinstance(final_report, BaseModel):
+                if hasattr(final_report, 'model_dump_json'):
+                    report_json = final_report.model_dump_json()
+                    print("\n======= FINAL REPORT JSON (model_dump_json) =======")
+                    print(report_json[:1000])  # Print first 1000 chars to avoid overwhelming the console
+                    print("... (truncated) ...")
+                elif hasattr(final_report, 'json'):
+                    report_json = final_report.json()
+                    print("\n======= FINAL REPORT JSON (json method) =======")
+                    print(report_json[:1000])  # Print first 1000 chars
+                    print("... (truncated) ...")
+            
+            # Try the default JSON encoder with custom datetime handling
+            class DateTimeEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    if isinstance(obj, datetime):
+                        return obj.isoformat()
+                    return super().default(obj)
+            
+            report_dict = {}
+            if hasattr(final_report, 'dict'):
+                report_dict = final_report.dict()
+            elif hasattr(final_report, 'model_dump'):
+                report_dict = final_report.model_dump()
+            else:
+                # Try direct attribute access to build a dict
+                report_dict = {
+                    "patient_id": getattr(final_report, "patient_id", "unknown"),
+                    "summary": getattr(final_report, "summary", "unknown"),
+                    "ehr_analysis": getattr(final_report, "ehr_analysis", {}),
+                    "imaging_analysis": getattr(final_report, "imaging_analysis", {}),
+                    "pathology_analysis": getattr(final_report, "pathology_analysis", {}),
+                    "guideline_recommendations": getattr(final_report, "guideline_recommendations", []),
+                    "specialist_assessment": getattr(final_report, "specialist_assessment", {}),
+                    "treatment_options": getattr(final_report, "treatment_options", []),
+                    "evaluation_score": getattr(final_report, "evaluation_score", None),
+                    "evaluation_comments": getattr(final_report, "evaluation_comments", None),
+                    "timestamp": str(datetime.utcnow())
+                }
+            
+            manual_json = json.dumps(report_dict, cls=DateTimeEncoder, indent=2)
+            print("\n======= FINAL REPORT MANUAL JSON =======")
+            print(manual_json[:1000])  # Print first 1000 chars
+            print("... (truncated) ...")
+            
+            # Write report to local file for inspection
+            with open(f"report_{run_id}.json", "w") as f:
+                f.write(manual_json)
+            print(f"\nFull report written to file: report_{run_id}.json")
+            
+            # Create a simplified report for testing
+            simple_report = {
+                "patient_id": final_context.patient_case.patient_id,
+                "summary": "Test Report",
+                "timestamp": str(datetime.utcnow())
+            }
+            print("\n======= SIMPLIFIED TEST REPORT =======")
+            print(json.dumps(simple_report, indent=2))
+        except Exception as json_error:
+            print(f"Error creating JSON output: {json_error}")
+            print(f"Error type: {type(json_error)}")
+            print(traceback.format_exc())
+        
+        print("===> FINAL REPORT CREATED:", final_report)
 
         # --- Emit Final Success Status ---
         await status_service.emit_status_update(
@@ -481,6 +573,126 @@ async def run_mdt_simulation(
                 "timestamp": datetime.utcnow()
             }
         )
+        
+        # --- FORCE TEST REPORT EMISSION ---
+        # Test if a minimal report can be emitted successfully
+        try:
+            print("\n========= EMITTING TEST REPORT DIRECTLY =========")
+            test_report = {
+                "patient_id": final_context.patient_case.patient_id,
+                "summary": "TEST REPORT - If you see this, regular report emission isn't working",
+                "ehr_analysis": {"summary": "Test EHR Analysis"},
+                "imaging_analysis": {"summary": "Test Imaging Analysis"},
+                "pathology_analysis": {"summary": "Test Pathology Analysis"},
+                "guideline_recommendations": [{"guideline": "Test Guideline"}],
+                "specialist_assessment": {"summary": "Test Specialist Assessment"},
+                "treatment_options": [{"option": "Test Treatment Option"}],
+                "timestamp": str(datetime.utcnow())
+            }
+            
+            print("Test report data:", test_report)
+            
+            # Directly emit the test report
+            await status_service.emit_report(run_id=run_id, report_data=test_report)
+            print("TEST REPORT EMITTED SUCCESSFULLY - Check if it appears in UI")
+            
+            # Short delay to give time for test report to be processed
+            await asyncio.sleep(0.5)
+        except Exception as test_report_error:
+            print(f"FAILED TO EMIT TEST REPORT: {test_report_error}")
+            print(traceback.format_exc())
+        
+        # --- Emit the MDT Report for UI display ---
+        try:
+            logger.info(f"Emitting MDT report for run_id: {run_id}")
+            print(f"===> EMITTING REPORT for run_id: {run_id}")
+            print(f"===> REPORT TYPE: {type(final_report)}")
+            print(f"===> REPORT DICT METHOD EXISTS: {hasattr(final_report, 'dict')}")
+            report_data = None
+            try:
+                # This is likely failing - use model_dump instead of dict for newer Pydantic versions
+                if hasattr(final_report, 'model_dump'):
+                    report_data = final_report.model_dump()
+                    print(f"===> USING model_dump METHOD: {type(report_data)}")
+                else:
+                    report_data = final_report.dict()
+                    print(f"===> USING dict METHOD: {type(report_data)}")
+                
+                print(f"===> REPORT DATA TYPE: {type(report_data)}")
+                print(f"===> REPORT DATA SIZE: {len(str(report_data))} bytes")
+                print(f"===> REPORT DATA KEYS: {report_data.keys() if isinstance(report_data, dict) else 'NOT A DICT'}")
+            except Exception as dict_error:
+                print(f"===> ERROR CALLING DICT/MODEL_DUMP METHOD: {dict_error}")
+                print(f"===> ERROR TYPE: {type(dict_error)}")
+                print(f"===> TRACEBACK: {traceback.format_exc()}")
+            
+            # Try alternative serialization if dict() fails
+            if report_data is None:
+                try:
+                    import json
+                    # Try using __dict__ or serialize the object directly
+                    if hasattr(final_report, '__dict__'):
+                        report_data = final_report.__dict__
+                        print(f"===> USING __dict__ FALLBACK: {type(report_data)}")
+                    else:
+                        # Try direct JSON serialization with custom encoder
+                        class DateTimeEncoder(json.JSONEncoder):
+                            def default(self, obj):
+                                if isinstance(obj, datetime):
+                                    return obj.isoformat()
+                                return super().default(obj)
+                        
+                        report_json = json.dumps(final_report, cls=DateTimeEncoder, default=str)
+                        report_data = json.loads(report_json)
+                        print(f"===> USING CUSTOM JSON SERIALIZATION: {type(report_data)}")
+                except Exception as json_error:
+                    print(f"===> ERROR WITH ALTERNATIVE SERIALIZATION: {json_error}")
+                    print(f"===> ERROR TYPE: {type(json_error)}")
+                    print(f"===> TRACEBACK: {traceback.format_exc()}")
+            
+            # If all else fails, create a minimal report
+            if report_data is None:
+                print("===> CREATING MINIMAL FALLBACK REPORT")
+                report_data = {
+                    "patient_id": final_context.patient_case.patient_id,
+                    "summary": "MDT Simulation Complete - Report format error",
+                    "timestamp": str(datetime.utcnow()),
+                    "note": "Unable to format full report - see logs for details",
+                    "ehr_analysis": {"summary": "EHR analysis complete, formatting error"},
+                    "treatment_options": [{"option": "See logs for full report"}]
+                }
+            
+            if report_data:
+                print(f"===> SENDING REPORT DATA OF TYPE: {type(report_data)}")
+                await status_service.emit_report(run_id=run_id, report_data=report_data)
+                print("===> REPORT EMITTED SUCCESSFULLY")
+                
+                # Add an auto-retry mechanism after a short delay
+                await asyncio.sleep(1.0)
+                print("===> TRYING SECOND EMISSION AFTER DELAY")
+                await status_service.emit_report(run_id=run_id, report_data=report_data)
+                print("===> SECOND REPORT EMISSION ATTEMPT COMPLETED")
+            else:
+                print("===> COULD NOT EMIT REPORT: No valid report data")
+        except Exception as report_error:
+            logger.error(f"Failed to emit MDT report for run_id: {run_id}. Error: {report_error}", exc_info=True)
+            print(f"===> FAILED TO EMIT REPORT: {report_error}")
+            print(f"===> ERROR TYPE: {type(report_error)}")
+            print(f"===> TRACEBACK: {traceback.format_exc()}")
+            # Try one last direct approach
+            try:
+                print("===> TRYING LAST RESORT DIRECT EMISSION")
+                minimal_report = {
+                    "patient_id": str(final_context.patient_case.patient_id),
+                    "summary": "Emergency fallback report due to formatting error",
+                    "timestamp": str(datetime.utcnow())
+                }
+                await status_service.emit_report(run_id=run_id, report_data=minimal_report)
+                print("===> EMERGENCY FALLBACK REPORT EMITTED")
+            except Exception as emergency_error:
+                print(f"===> EMERGENCY FALLBACK ALSO FAILED: {emergency_error}")
+                # Continue execution even if report emission fails
+        
         logger.info(f"Finished MDT simulation for run_id: {run_id}. Success. Duration: {datetime.utcnow() - start_time}")
         return final_report
 
