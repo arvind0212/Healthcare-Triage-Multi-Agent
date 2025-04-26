@@ -51,8 +51,7 @@ class AgentOutputPlaceholder(BaseModel):
 
 # Context passed between agent steps
 class AgentContext(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
+    """In-memory context object passed between agent steps."""
     run_id: str
     patient_case: PatientCase
     status_service: StatusUpdateService
@@ -62,6 +61,7 @@ class AgentContext(BaseModel):
     guideline_recommendations: Optional[List[Dict[str, Any]]] = None
     specialist_assessment: Optional[AgentOutputPlaceholder] = None
     evaluation: Optional[Dict[str, Any]] = None
+    summary: Optional[Dict[str, Any]] = None
 
     # Extra fields allowed for intermediate data
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
@@ -88,6 +88,8 @@ class AgentContext(BaseModel):
             result["specialist_assessment"] = self._convert_to_serializable(self.specialist_assessment)
         if self.evaluation:
             result["evaluation"] = self._convert_to_serializable(self.evaluation)
+        if self.summary:
+            result["summary"] = self._convert_to_serializable(self.summary)
             
         return result
     
@@ -387,6 +389,58 @@ async def _run_evaluation_step(context: AgentContext) -> AgentContext:
     )
     return context
 
+async def _run_summary_step(context: AgentContext) -> AgentContext:
+    agent_id = "SummaryAgent"
+    await context.status_service.emit_status_update(
+        run_id=context.run_id,
+        status_update_data={
+            "agent_id": agent_id,
+            "status": "ACTIVE",
+            "message": "Starting MDT Summary Generation",
+            "timestamp": datetime.utcnow()
+        }
+    )
+    
+    # Create and use the SummaryAgent
+    from mdt_agent_system.app.agents.summary_agent import SummaryAgent
+    
+    agent = SummaryAgent(
+        run_id=context.run_id,
+        status_service=context.status_service
+    )
+    
+    # Build a dict with context data for the agent
+    agent_context = {}
+    if context.ehr_analysis:
+        agent_context["ehr_analysis"] = context.ehr_analysis.dict()
+    if context.imaging_analysis:
+        agent_context["imaging_analysis"] = context.imaging_analysis.dict()
+    if context.pathology_analysis:
+        agent_context["pathology_analysis"] = context.pathology_analysis.dict()
+    if context.guideline_recommendations:
+        agent_context["guideline_recommendations"] = context.guideline_recommendations
+    if context.specialist_assessment:
+        agent_context["specialist_assessment"] = context.specialist_assessment.dict()
+    if context.evaluation:
+        agent_context["evaluation"] = context.evaluation
+        
+    # Process with the actual agent
+    result = await agent.process(context.patient_case, agent_context)
+    
+    # Store result directly in context.summary
+    context.summary = result
+    
+    await context.status_service.emit_status_update(
+        run_id=context.run_id,
+        status_update_data={
+            "agent_id": agent_id,
+            "status": "DONE",
+            "message": "MDT Summary Generation Finished",
+            "timestamp": datetime.utcnow()
+        }
+    )
+    return context
+
 # --- Helper Runnable for Coordinator Status Updates ---
 
 async def _emit_coordinator_status(input_tuple: Tuple[AgentContext, str, str]) -> AgentContext:
@@ -510,6 +564,19 @@ async def run_mdt_simulation(
             )
             return await _run_evaluation_step(context)
 
+        async def emit_and_run_summary(context: AgentContext) -> AgentContext:
+            await context.status_service.emit_status_update(
+                run_id=context.run_id,
+                status_update_data={
+                    "agent_id": "Coordinator",
+                    "status": "ACTIVE",
+                    "message": "Handing over to Summary Agent",
+                    "timestamp": datetime.utcnow(),
+                    "details": {"target_agent": "SummaryAgent"}
+                }
+            )
+            return await _run_summary_step(context)
+
         # Define the workflow using the combined functions
         mdt_workflow: Runnable[AgentContext, AgentContext] = (
             RunnableLambda(emit_and_run_ehr)
@@ -518,6 +585,7 @@ async def run_mdt_simulation(
             | RunnableLambda(emit_and_run_guideline)
             | RunnableLambda(emit_and_run_specialist)
             | RunnableLambda(emit_and_run_evaluation)
+            | RunnableLambda(emit_and_run_summary)  # Add summary as final step
         )
 
         # Execute the workflow
@@ -594,9 +662,10 @@ async def run_mdt_simulation(
                     f"Areas for Improvement:{improvements_text}"
                 )
         
+        # Create the final report from the context
         final_report = MDTReport(
             patient_id=final_context.patient_case.patient_id,
-            summary="MDT Simulation Complete (Runnable Workflow)",
+            summary=final_context.summary.get("summary") or "MDT analysis completed",
             ehr_analysis=final_context.ehr_analysis.dict() if final_context.ehr_analysis else {},
             imaging_analysis=final_context.imaging_analysis.dict() if final_context.imaging_analysis else {},
             pathology_analysis=final_context.pathology_analysis.dict() if final_context.pathology_analysis else {},
@@ -606,6 +675,7 @@ async def run_mdt_simulation(
             evaluation_score=final_context.evaluation.get("score") if final_context.evaluation else None,
             evaluation_comments=final_context.evaluation.get("comments") if final_context.evaluation else None,
             evaluation_formatted=evaluation_formatted,
+            markdown_summary=final_context.summary.get("markdown_summary") if final_context.summary else None,
             timestamp=datetime.utcnow(),
         )
         

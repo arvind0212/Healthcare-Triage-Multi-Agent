@@ -15,6 +15,7 @@ class MDTReport(BaseModel):
     evaluation_score: Optional[float] = Field(None, description="Self-evaluation score of the report")
     evaluation_comments: Optional[str] = Field(None, description="Self-evaluation comments")
     evaluation_formatted: Optional[str] = Field(None, description="Formatted evaluation summary with score and key points")
+    markdown_summary: Optional[str] = Field(None, description="Markdown-formatted executive summary of the MDT report")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Report generation timestamp")
     
     class Config:
@@ -46,6 +47,7 @@ class MDTReport(BaseModel):
                         "option": "Conservative management",
                         "details": "Risk factor modification and monitoring"
                     }
-                ]
+                ],
+                "markdown_summary": "# MDT Summary: P12345\n\n## Diagnosis & Staging\n- **Confirmed Diagnosis**: Acute Coronary Syndrome\n- **Stage**: Low-intermediate risk\n\n## Key Recommendations\n1. Stress test\n2. Risk factor modification\n3. Regular follow-up\n\n## Critical Next Steps\n- [ ] Schedule stress test within 72 hours\n- [ ] Cardiology consultation\n- [ ] Medication review"
             }
         } 

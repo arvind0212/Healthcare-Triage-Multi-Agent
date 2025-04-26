@@ -535,4 +535,63 @@ footer {
 .mermaid .error .nodeLabel {
     color: white !important;
     font-weight: 600 !important;
+}
+
+/* Add these styles for the MDT summary section */
+.mdt-summary {
+    background-color: #f8f9fa;
+    border-left: 4px solid #007bff;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    border-radius: 0.25rem;
+}
+
+.mdt-summary h1 {
+    margin-top: 0;
+    color: #0056b3;
+    font-size: 1.5rem;
+}
+
+.mdt-summary h2 {
+    font-size: 1.2rem;
+    margin-top: 1rem;
+    color: #444;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 0.25rem;
+}
+
+.mdt-summary ul, .mdt-summary ol {
+    padding-left: 1.5rem;
+}
+
+.mdt-summary li {
+    margin-bottom: 0.25rem;
+}
+
+.task-list-item {
+    list-style-type: none;
+    position: relative;
+    padding-left: 0.5rem;
+}
+
+.task-list-item input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+/* Details/summary for collapsible sections */
+details.agent-details {
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+details.agent-details summary {
+    padding: 0.75rem;
+    cursor: pointer;
+    background-color: #f8f9fa;
+    font-weight: 500;
+}
+
+details.agent-details .agent-content {
+    padding: 1rem;
 } 

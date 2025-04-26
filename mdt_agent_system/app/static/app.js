@@ -473,7 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let graphDefinition = `graph TD\n`;
         
         // Add nodes for each agent
-        const agents = ['coordinator', 'ehr', 'imaging', 'pathology', 'guideline', 'specialist', 'evaluation'];
+        const agents = ['coordinator', 'ehr', 'imaging', 'pathology', 'guideline', 'specialist', 'evaluation', 'summary'];
         const agentLabels = {
             'coordinator': 'Coordinator',
             'ehr': 'EHR Agent',
@@ -481,7 +481,8 @@ document.addEventListener('DOMContentLoaded', () => {
             'pathology': 'Pathology Agent',
             'guideline': 'Guideline Agent',
             'specialist': 'Specialist Agent',
-            'evaluation': 'Evaluation Agent'
+            'evaluation': 'Evaluation Agent',
+            'summary': 'Summary Agent'
         };
         
         agents.forEach(agent => {
@@ -505,6 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         graphDefinition += `    coordinator --> guideline\n`;
         graphDefinition += `    coordinator --> specialist\n`;
         graphDefinition += `    coordinator --> evaluation\n`;
+        graphDefinition += `    coordinator --> summary\n`;
         
         // Add status message at the bottom
         if (statusData.message) {
@@ -530,21 +532,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Display the MDT report
-    function displayReport(reportData) {
-        // Format the JSON with indentation
-        const formattedReport = JSON.stringify(reportData, null, 2);
-        reportOutput.textContent = formattedReport;
+    function displayReport(data) {
+        if (!data) {
+            reportOutput.textContent = 'No report data available';
+            return;
+        }
         
-        // Generate and display markdown
-        const markdownText = convertJsonToMarkdown(reportData);
-        markdownOutput.innerHTML = markdownText;
+        console.log('Displaying report:', data);
         
-        // Enable copy buttons
-        copyReport.disabled = false;
-        copyMarkdown.disabled = false;
-        
-        // Scroll to report
-        reportOutput.scrollIntoView({ behavior: 'smooth' });
+        try {
+            // Handle markdown summary if available
+            if (data.markdown_summary) {
+                // Create a section for the markdown summary at the top
+                const summaryDiv = document.createElement('div');
+                summaryDiv.id = 'mdt-summary';
+                summaryDiv.className = 'mdt-summary';
+                summaryDiv.innerHTML = markdownToHtml(data.markdown_summary);
+                
+                // Insert the summary at the top of the report output area
+                if (markdownView.firstChild) {
+                    markdownView.insertBefore(summaryDiv, markdownView.firstChild);
+                } else {
+                    markdownView.appendChild(summaryDiv);
+                }
+                
+                // Automatically switch to markdown view when summary is available
+                switchView('markdown');
+            }
+            
+            // Format the JSON for display
+            const formattedJson = JSON.stringify(data, null, 2);
+            reportOutput.textContent = formattedJson;
+            
+            // Format as Markdown
+            const markdownHtml = data.markdown_summary || convertJsonToMarkdown(data);
+            markdownOutput.innerHTML = markdownHtml;
+            
+            // Show the copy buttons
+            copyReport.style.display = 'block';
+            copyMarkdown.style.display = 'block';
+            
+            // Mark report as received
+            reportReceived = true;
+            
+        } catch (error) {
+            console.error('Error formatting report:', error);
+            reportOutput.textContent = `Error formatting report: ${error.message}\n\nRaw data: ${JSON.stringify(data)}`;
+        }
     }
 
     // Switch between JSON and Markdown views
@@ -797,11 +831,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return value.toString();
     }
     
-    // Convert markdown to HTML
+    // Convert markdown to HTML - Enhanced for better rendering
     function markdownToHtml(markdown) {
         if (!markdown) return '';
         
-        // Basic markdown to HTML conversion
+        // Basic markdown to HTML conversion with improvements
         return markdown
             // Headers
             .replace(/^# (.*$)/gm, '<h1>$1</h1>')
@@ -815,17 +849,26 @@ document.addEventListener('DOMContentLoaded', () => {
             // Italic
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             
-            // Lists
+            // Checkbox lists (for Critical Next Steps)
+            .replace(/^\s*- \[ \] (.*$)/gm, '<li class="task-list-item"><input type="checkbox" disabled> $1</li>')
+            .replace(/^\s*- \[x\] (.*$)/gm, '<li class="task-list-item"><input type="checkbox" checked disabled> $1</li>')
+            
+            // Regular lists
             .replace(/^\s*- (.*$)/gm, '<li>$1</li>')
-            .replace(/(<li>.*<\/li>\n)+/g, '<ul>$&</ul>')
+            .replace(/(<li.*>.*<\/li>\n)+/g, '<ul>$&</ul>')
+            
+            // Numbered lists
+            .replace(/^\s*\d+\.\s+(.*$)/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>\n)+/g, '<ol>$&</ol>')
             
             // Paragraphs
-            .replace(/^(?!<[hlu]|<strong|<em)(.*$)/gm, function(match) {
+            .replace(/^(?!<[holu]|<strong|<em)(.*$)/gm, function(match) {
                 return match.trim() ? '<p>' + match + '</p>' : '';
             })
             
             // Fix empty lines between list items
             .replace(/<\/ul>\n<ul>/g, '')
+            .replace(/<\/ol>\n<ol>/g, '')
             
             // Line breaks
             .replace(/\n/g, '<br>');
