@@ -15,6 +15,10 @@
     <link rel="stylesheet" href="/static/styles.css?v=20250424">
     <!-- Mermaid.js for workflow visualization -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -25,25 +29,31 @@
             </div>
         </header>
 
-        <main>
+        <main class="vertical-flow">
             <section class="input-section">
-                <div class="file-input-container">
+                <div class="section-header">
+                    <i class="fas fa-file-upload section-icon"></i>
                     <h2>Upload Patient Case</h2>
+                </div>
+                <div class="file-input-container">
                     <input type="file" id="fileInput" accept=".json" class="file-input">
-                    <label for="fileInput" class="file-input-label">Select JSON File</label>
+                    <label for="fileInput" class="file-input-label"><i class="fas fa-file-medical"></i> Select JSON File</label>
                     <p class="file-name" id="fileName">No file selected</p>
                 </div>
-                <button id="runSimulation" class="primary-button" disabled>Run Simulation</button>
+                <button id="runSimulation" class="primary-button" disabled><i class="fas fa-play-circle"></i> Run Simulation</button>
             </section>
 
             <section class="visualization-section">
-                <h2>Workflow Visualization</h2>
+                <div class="section-header">
+                    <i class="fas fa-project-diagram section-icon"></i>
+                    <h2>Workflow Visualization</h2>
+                </div>
                 <div class="connection-status" id="connectionStatus">
                     <span class="status-indicator"></span>
                     <span class="status-text">Not connected</span>
                 </div>
                 <div class="workflow-container">
-                    <div id="mermaidGraph" class="mermaid">
+                    <div id="workflowDiagram" class="mermaid">
                         graph TD
                             coordinator(Coordinator) --> ehr(EHR Agent)
                             coordinator --> imaging(Imaging Agent)
@@ -56,28 +66,26 @@
             </section>
 
             <section class="output-section">
-                <h2>MDT Report</h2>
+                <div class="section-header">
+                    <i class="fas fa-file-medical-alt section-icon"></i>
+                    <h2>MDT Report</h2>
+                </div>
                 <!-- Add Run ID input field -->
-                <div class="run-id-container" style="margin-bottom: 15px; display: flex; gap: 10px;">
-                    <input type="text" id="runIdInput" placeholder="Enter Run ID" style="padding: 8px; flex-grow: 1;">
-                    <button id="manualFetchButton" class="primary-button" style="background-color: #f0ad4e;">Fetch Report Manually</button>
+                <div class="run-id-container">
+                    <input type="text" id="runIdInput" placeholder="Enter Run ID">
+                    <button id="manualFetchButton" class="secondary-button"><i class="fas fa-sync-alt"></i> Fetch Report</button>
                 </div>
                 <div class="report-container">
-                    <button id="fetchDirectButton" class="primary-button" style="background-color: #f0ad4e; margin-bottom: 10px;">Fetch Report Directly</button>
-                    
-                    <div class="report-view-toggle" style="margin-bottom: 10px; display: flex;">
-                        <button id="jsonViewBtn" class="view-toggle-btn active">JSON View</button>
-                        <button id="markdownViewBtn" class="view-toggle-btn">Markdown View</button>
+                    <div id="reportSummary" class="report-summary">
+                        <div id="markdownSummary" class="markdown-content">No report summary generated yet</div>
                     </div>
                     
-                    <div id="jsonView">
-                        <pre id="reportOutput">No report generated yet</pre>
-                        <button id="copyReport" class="secondary-button" disabled>Copy JSON</button>
+                    <div id="agentOutputs" class="agent-outputs">
+                        <!-- Agent reports will be inserted here dynamically -->
                     </div>
                     
-                    <div id="markdownView" style="display: none;">
-                        <div id="markdownOutput" class="markdown-content">No report generated yet</div>
-                        <button id="copyMarkdown" class="secondary-button" disabled>Copy Markdown</button>
+                    <div class="report-actions">
+                        <button id="copyMarkdown" class="secondary-button" disabled><i class="fas fa-copy"></i> Copy Report</button>
                     </div>
                 </div>
             </section>
@@ -88,31 +96,6 @@
         </footer>
     </div>
 
-    <!-- Add inline script for manual fetch button -->
-    <script>
-        // Simple function to manually fetch report by ID
-        document.getElementById('manualFetchButton').addEventListener('click', async function() {
-            const runId = document.getElementById('runIdInput').value.trim();
-            if (!runId) {
-                alert('Please enter a Run ID');
-                return;
-            }
-            
-            try {
-                const response = await fetch(`/api/report/${runId}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch report: ${response.statusText}`);
-                }
-                
-                const reportData = await response.json();
-                document.getElementById('reportOutput').textContent = JSON.stringify(reportData, null, 2);
-                console.log("Report fetched manually:", reportData);
-            } catch (error) {
-                console.error('Error fetching report:', error);
-                alert(`Error: ${error.message}`);
-            }
-        });
-    </script>
     <!-- Load main app script with cache busting -->
     <script src="/static/app.js?v=20250424"></script>
 </body>

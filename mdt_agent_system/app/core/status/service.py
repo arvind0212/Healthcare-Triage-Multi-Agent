@@ -114,7 +114,7 @@ class StatusUpdateService:
                         print("===> Converted using .__dict__ attribute")
                     else:
                         # Last resort: convert to string and back to dict
-                        import json
+                        # Use the globally imported json module
                         report_data = json.loads(json.dumps(report_data, default=str))
                         print("===> Converted using json dumps/loads")
                 except Exception as conv_error:
