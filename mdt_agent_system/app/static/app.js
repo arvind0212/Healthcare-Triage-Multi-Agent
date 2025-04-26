@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log("DOM fully loaded - Initializing app.js");
     
-    // Initialize Mermaid
+    // Initialize Mermaid with the updated configuration
     mermaid.initialize({
-        startOnLoad: true,
+        startOnLoad: false,
         theme: 'neutral',
         securityLevel: 'loose',
         flowchart: {
@@ -11,18 +11,17 @@ document.addEventListener('DOMContentLoaded', () => {
             htmlLabels: true,
             curve: 'basis'
         },
-        classDef: {
-            active: {
-                fill: '#28a745',
-                stroke: '#1e7e34',
-                color: '#fff',
-                'font-weight': 'bold'
-            },
-            error: {
-                fill: '#dc3545',
-                stroke: '#bd2130',
-                color: '#fff',
-                'font-weight': 'bold'
+        parseError: function(err) {
+            console.error('Mermaid parse error:', err);
+            const diagramContainer = document.getElementById('workflowDiagram');
+            if (diagramContainer) {
+                diagramContainer.innerHTML = `
+                    <details class="error-details">
+                        <summary>Error rendering diagram</summary>
+                        <p>${err}</p>
+                        <pre></pre>
+                    </details>
+                `;
             }
         }
     });
@@ -31,42 +30,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = document.getElementById('fileInput');
     const fileName = document.getElementById('fileName');
     const runSimulation = document.getElementById('runSimulation');
-    const reportOutput = document.getElementById('reportOutput');
-    const copyReport = document.getElementById('copyReport');
     const connectionStatus = document.getElementById('connectionStatus');
     const statusIndicator = connectionStatus.querySelector('.status-indicator');
     const statusText = connectionStatus.querySelector('.status-text');
-    const fetchDirectButton = document.getElementById('fetchDirectButton');
-    
-    // View toggling elements
-    const jsonViewBtn = document.getElementById('jsonViewBtn');
-    const markdownViewBtn = document.getElementById('markdownViewBtn');
-    const jsonView = document.getElementById('jsonView');
-    const markdownView = document.getElementById('markdownView');
-    const markdownOutput = document.getElementById('markdownOutput');
+    const markdownSummary = document.getElementById('markdownSummary');
+    const agentOutputs = document.getElementById('agentOutputs');
     const copyMarkdown = document.getElementById('copyMarkdown');
-    
-    // Verify DOM elements are found
-    console.log("DOM Elements found:", {
-        fileInput: !!fileInput,
-        fileName: !!fileName,
-        runSimulation: !!runSimulation,
-        reportOutput: !!reportOutput,
-        copyReport: !!copyReport,
-        connectionStatus: !!connectionStatus,
-        statusIndicator: !!statusIndicator,
-        statusText: !!statusText,
-        fetchDirectButton: !!fetchDirectButton,
-        jsonViewBtn: !!jsonViewBtn,
-        markdownViewBtn: !!markdownViewBtn,
-        jsonView: !!jsonView,
-        markdownView: !!markdownView,
-        markdownOutput: !!markdownOutput,
-        copyMarkdown: !!copyMarkdown
-    });
-    
-    // Get run ID input and manual fetch button
     const runIdInput = document.getElementById('runIdInput');
+    const manualFetchButton = document.getElementById('manualFetchButton');
+    
+    // Agent Map for node identification and display names
+    const agentMap = {
+        coordinator: { id: 'coordinator', name: 'Coordinator', icon: 'fa-sitemap' },
+        ehr_agent: { id: 'ehr', name: 'EHR Agent', icon: 'fa-notes-medical' },
+        imaging_agent: { id: 'imaging', name: 'Imaging Agent', icon: 'fa-x-ray' },
+        pathology_agent: { id: 'pathology', name: 'Pathology Agent', icon: 'fa-microscope' },
+        guideline_agent: { id: 'guideline', name: 'Guideline Agent', icon: 'fa-book-medical' },
+        specialist_agent: { id: 'specialist', name: 'Specialist Agent', icon: 'fa-user-md' },
+        evaluation_agent: { id: 'evaluation', name: 'Evaluation Agent', icon: 'fa-check-square' }
+    };
+    
+    // Node state storage
+    let nodeStates = {};
     
     // Variables
     let patientCaseFile = null;
@@ -81,42 +66,43 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listeners for UI interactions
     fileInput.addEventListener('change', handleFileSelection);
     runSimulation.addEventListener('click', startSimulation);
-    copyReport.addEventListener('click', copyReportToClipboard);
-    copyMarkdown.addEventListener('click', copyMarkdownToClipboard);
-    fetchDirectButton.addEventListener('click', fetchReportDirectly);
-    jsonViewBtn.addEventListener('click', () => switchView('json'));
-    markdownViewBtn.addEventListener('click', () => switchView('markdown'));
+    copyMarkdown.addEventListener('click', copyReportToClipboard);
+    manualFetchButton.addEventListener('click', fetchReportManually);
+    
+    // Render initial diagram
+    initializeVisualization();
 
     // File drag and drop enhancements
-    const fileInputLabel = document.querySelector('.file-input-label');
     const fileDropArea = document.querySelector('.file-input-container');
     
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        fileDropArea.addEventListener(eventName, preventDefaults, false);
-    });
-    
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
+    if (fileDropArea) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileDropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            fileDropArea.addEventListener(eventName, highlight, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            fileDropArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            if (fileDropArea) fileDropArea.classList.add('highlight');
+        }
+        
+        function unhighlight() {
+            if (fileDropArea) fileDropArea.classList.remove('highlight');
+        }
+        
+        fileDropArea.addEventListener('drop', handleDrop, false);
     }
-    
-    ['dragenter', 'dragover'].forEach(eventName => {
-        fileDropArea.addEventListener(eventName, highlight, false);
-    });
-    
-    ['dragleave', 'drop'].forEach(eventName => {
-        fileDropArea.addEventListener(eventName, unhighlight, false);
-    });
-    
-    function highlight() {
-        fileDropArea.classList.add('highlight');
-    }
-    
-    function unhighlight() {
-        fileDropArea.classList.remove('highlight');
-    }
-    
-    fileDropArea.addEventListener('drop', handleDrop, false);
     
     function handleDrop(e) {
         const dt = e.dataTransfer;
@@ -162,10 +148,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             // Disable button during processing
             runSimulation.disabled = true;
-            runSimulation.textContent = 'Processing...';
+            runSimulation.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             
             // Reset report received flag
             reportReceived = false;
+            
+            // Reset visualization
+            resetVisualization();
             
             // Create form data
             const formData = new FormData();
@@ -195,41 +184,22 @@ document.addEventListener('DOMContentLoaded', () => {
             connectSSE(currentRunId);
             
             // Update UI to show simulation is running
-            reportOutput.textContent = 'Simulation in progress...';
+            markdownSummary.innerHTML = '<div class="loading">Simulation in progress...</div>';
+            agentOutputs.innerHTML = '';
             
         } catch (error) {
             console.error('Error:', error);
             showMessage(`Error: ${error.message}`, 'error');
             runSimulation.disabled = false;
-            runSimulation.textContent = 'Run Simulation';
+            runSimulation.innerHTML = '<i class="fas fa-play-circle"></i> Run Simulation';
         }
     }
 
     // Copy report to clipboard
     function copyReportToClipboard() {
-        navigator.clipboard.writeText(reportOutput.textContent)
-            .then(() => {
-                // Visual feedback
-                const originalText = copyReport.textContent;
-                copyReport.textContent = 'Copied!';
-                setTimeout(() => {
-                    copyReport.textContent = originalText;
-                }, 2000);
-            })
-            .catch(err => {
-                console.error('Failed to copy report:', err);
-                showMessage('Failed to copy report to clipboard', 'error');
-            });
-    }
-
-    // Copy markdown to clipboard
-    function copyMarkdownToClipboard() {
-        // Get the markdown as plain text without HTML formatting
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = markdownOutput.innerHTML;
-        const markdownText = tempDiv.textContent || tempDiv.innerText || '';
+        const summaryText = markdownSummary.textContent || '';
         
-        navigator.clipboard.writeText(markdownText)
+        navigator.clipboard.writeText(summaryText)
             .then(() => {
                 // Visual feedback
                 const originalText = copyMarkdown.textContent;
@@ -239,8 +209,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 2000);
             })
             .catch(err => {
-                console.error('Failed to copy markdown:', err);
-                showMessage('Failed to copy markdown to clipboard', 'error');
+                console.error('Failed to copy report:', err);
+                showMessage('Failed to copy report to clipboard', 'error');
             });
     }
 
@@ -249,669 +219,1079 @@ document.addEventListener('DOMContentLoaded', () => {
         // Close existing connection if any
         if (eventSource) {
             eventSource.close();
+            eventSource = null;
         }
         
-        // Update connection status
-        updateConnectionStatus('connecting', 'Connecting...');
+        // Reset reconnect attempts
+        reconnectAttempts = 0;
         
-        // Create new EventSource connection
-        const url = `${apiBase}/stream/${runId}`;
-        console.log(`===> Connecting to SSE stream: ${url}`);
-        eventSource = new EventSource(url);
+        // Create new EventSource - update URL to match backend
+        const sseUrl = `${apiBase}/stream/${runId}`;
+        console.log(`Connecting to SSE stream: ${sseUrl}`);
         
-        // Event handlers
-        eventSource.onopen = () => {
-            console.log("===> SSE connection opened");
-            updateConnectionStatus('connected', 'Connected');
-            reconnectAttempts = 0; // Reset reconnect counter on successful connection
-        };
+        eventSource = new EventSource(sseUrl);
         
-        // Log all message events
-        eventSource.onmessage = (event) => {
-            console.log(`===> SSE generic message received:`, event);
-        };
+        // Use specific event listeners for each event type
+        eventSource.addEventListener('status_update', handleStatusUpdate);
+        eventSource.addEventListener('report', handleReportEvent);
+        eventSource.addEventListener('complete', handleCompleteEvent);
         
-        eventSource.addEventListener('status_update', (event) => {
-            console.log("===> RECEIVED STATUS_UPDATE EVENT:", event);
-            try {
-                const statusData = JSON.parse(event.data);
-                console.log("===> PARSED STATUS DATA:", statusData);
-                updateWorkflowVisualization(statusData);
-                
-                // Check if this is the final status update
-                if (statusData.status === "DONE" && statusData.message === "MDT Simulation Finished Successfully") {
-                    console.log("===> SIMULATION FINISHED, WILL TRY AUTO-FETCHING REPORT IN 2 SECONDS");
-                    // Wait a bit then try to auto-fetch the report if it's not received via SSE
-                    setTimeout(() => {
-                        if (!reportReceived && currentRunId) {
-                            console.log("===> AUTO-FETCHING REPORT AFTER COMPLETION");
-                            fetchReportDirectly();
-                        }
-                    }, 2000);
-                }
-            } catch (error) {
-                console.error('Error parsing status update:', error);
-            }
-        });
-        
-        // Variables for storing chunked report data
-        let reportChunks = {};
-        let currentReportMetadata = null;
-        
-        // Handle the report metadata
-        eventSource.addEventListener('report_metadata', (event) => {
-            console.log("===> RECEIVED REPORT_METADATA EVENT:", event);
-            try {
-                const metadata = JSON.parse(event.data);
-                console.log("===> PARSED REPORT METADATA:", metadata);
-                currentReportMetadata = metadata;
-                reportChunks = {}; // Reset chunks for new report
-                reportOutput.textContent = `Receiving report data (0/${metadata.chunks} chunks)...`;
-            } catch (error) {
-                console.error('Error parsing report metadata:', error);
-            }
-        });
-        
-        // Handle report chunks
-        eventSource.addEventListener('report_chunk', (event) => {
-            console.log("===> RECEIVED REPORT_CHUNK EVENT:", event);
-            try {
-                const chunkData = JSON.parse(event.data);
-                console.log("===> RECEIVED CHUNK INDEX:", chunkData.chunk_index);
-                const { chunk_index, total_chunks, data } = chunkData;
-                
-                // Store this chunk
-                reportChunks[chunk_index] = data;
-                
-                // Update progress
-                const receivedChunks = Object.keys(reportChunks).length;
-                reportOutput.textContent = `Receiving report data (${receivedChunks}/${total_chunks} chunks)...`;
-                
-                // Check if we have all chunks
-                if (receivedChunks === total_chunks) {
-                    // Reassemble the report
-                    const completeData = [];
-                    for (let i = 0; i < total_chunks; i++) {
-                        if (reportChunks[i]) {
-                            completeData.push(reportChunks[i]);
-                        } else {
-                            console.error(`Missing chunk ${i} of report`);
-                            reportOutput.textContent = 'Error: Missing chunks in report data.';
-                            return;
-                        }
-                    }
-                    
-                    // Parse and display the complete report
-                    const fullReportJson = completeData.join('');
-                    try {
-                        const reportData = JSON.parse(fullReportJson);
-                        console.log("===> REASSEMBLED REPORT:", reportData);
-                        displayReport(reportData);
-                        reportReceived = true; // Mark report as received
-                        runSimulation.disabled = false;
-                        runSimulation.textContent = 'Run Simulation';
-                    } catch (jsonError) {
-                        console.error('Error parsing reassembled JSON:', jsonError);
-                        reportOutput.textContent = 'Error: Failed to reassemble report data.';
-                    }
-                }
-            } catch (error) {
-                console.error('Error processing report chunk:', error);
-            }
-        });
-        
-        eventSource.addEventListener('report', (event) => {
-            console.log("===> RECEIVED REPORT EVENT:", event);
-            try {
-                // Log the raw event data
-                console.log("===> RAW REPORT DATA:", event.data);
-                const reportData = JSON.parse(event.data);
-                console.log("===> PARSED REPORT DATA:", reportData);
-                
-                // Display the keys in the report data
-                if (reportData && typeof reportData === 'object') {
-                    console.log("===> REPORT KEYS:", Object.keys(reportData));
-                }
-                
-                displayReport(reportData);
-                reportReceived = true; // Mark report as received
-                runSimulation.disabled = false;
-                runSimulation.textContent = 'Run Simulation';
-            } catch (error) {
-                console.error('Error parsing report:', error);
-                // Try to display the raw report data if parsing fails
-                reportOutput.textContent = `Error parsing report JSON. Raw data: ${event.data}`;
-                runSimulation.disabled = false;
-                runSimulation.textContent = 'Run Simulation';
-            }
-        });
-        
-        eventSource.addEventListener('error', (event) => {
-            console.error("===> SSE ERROR EVENT:", event);
-            handleSSEError(event, runId);
-        });
-        
-        eventSource.addEventListener('complete', (event) => {
-            console.log("===> RECEIVED COMPLETE EVENT:", event);
-            // Simulation completed, close connection
-            eventSource.close();
-            updateConnectionStatus('', 'Simulation completed');
-            runSimulation.disabled = false;
-            runSimulation.textContent = 'Run Simulation';
+        // General message handler for any unlabeled events
+        eventSource.onmessage = function(event) {
+            console.log(`Generic SSE message received for ${runId}:`, event.data);
             
-            // If no report was received, show a message
-            if (!reportReceived) {
-                console.log("===> No report received via SSE stream");
-                reportOutput.textContent += '\n\nNo report was received via SSE stream. Click "Fetch Report Directly" to retrieve it.';
+            try {
+                const data = JSON.parse(event.data);
+                
+                // Check if it's a report
+                if (data.status === 'REPORT' || data.type === 'report') {
+                    displayReport(data.data || data);
+                    return;
+                }
+                
+                // Otherwise treat as status update
+                updateWorkflowVisualization(data);
+                
+            } catch (error) {
+                console.error('Error parsing SSE message:', error);
             }
-        });
+        };
         
-        // Log ping events
-        eventSource.addEventListener('ping', (event) => {
-            console.log("===> PING EVENT:", event);
-        });
+        // Connection established
+        eventSource.onopen = function() {
+            console.log(`SSE connection established for ${runId}`);
+            updateConnectionStatus('connected', 'Connected to simulation');
+        };
+        
+        // Handle errors
+        eventSource.onerror = function(event) {
+            handleSSEError(event, runId);
+        };
+    }
+    
+    // Handle specific status update events
+    function handleStatusUpdate(event) {
+        console.log('Status update received:', event.data);
+        try {
+            const data = JSON.parse(event.data);
+            updateWorkflowVisualization(data);
+        } catch (error) {
+            console.error('Error parsing status update:', error);
+        }
+    }
+    
+    // Handle report events
+    function handleReportEvent(event) {
+        console.log('Report received:', event.data);
+        try {
+            const data = JSON.parse(event.data);
+            displayReport(data.data || data);
+        } catch (error) {
+            console.error('Error parsing report:', error);
+        }
+    }
+    
+    // Handle complete events
+    function handleCompleteEvent(event) {
+        console.log('Simulation complete:', event.data);
+        try {
+            // Close the EventSource since we're done
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            updateConnectionStatus('complete', 'Simulation complete');
+            
+            // Auto-fetch report with multiple attempts
+            // Given backend issues, we'll try multiple times with increasing delays
+            console.log("Starting auto-fetch sequence for report");
+            
+            let fetchAttempt = 0;
+            const maxFetchAttempts = 3;
+            
+            function attemptFetch() {
+                fetchAttempt++;
+                console.log(`Auto-fetch attempt ${fetchAttempt}/${maxFetchAttempts}`);
+                
+                // Attempt to fetch the report
+                fetchReportDirectly(false); // Pass false to not show loading indicator on each try
+                
+                // If we haven't received a report and haven't reached max attempts, try again
+                if (!reportReceived && fetchAttempt < maxFetchAttempts) {
+                    const delay = 1000 * fetchAttempt;
+                    console.log(`Will try again in ${delay}ms`);
+                    setTimeout(attemptFetch, delay);
+                } else if (!reportReceived) {
+                    console.log("Auto-fetch sequence completed without success");
+                    // Show a message that user may need to fetch manually
+                    markdownSummary.innerHTML = `
+                        <div class="notice">
+                            <h3>Simulation Complete</h3>
+                            <p>The simulation has finished, but the report could not be fetched automatically.</p>
+                            <p>Please click the "Fetch Report" button to retrieve the results.</p>
+                        </div>
+                    `;
+                }
+            }
+            
+            // Start the first attempt after a short delay
+            setTimeout(attemptFetch, 500);
+            
+            // Re-enable the run button
+            runSimulation.disabled = false;
+            runSimulation.innerHTML = '<i class="fas fa-play-circle"></i> Run Simulation';
+            
+        } catch (error) {
+            console.error('Error handling complete event:', error);
+        }
     }
 
     // Handle SSE connection errors
     function handleSSEError(event, runId) {
-        console.error('SSE connection error:', event);
+        console.error('SSE Error:', event);
         
-        // Update status
-        updateConnectionStatus('error', 'Connection lost');
-        
-        // Close the errored connection
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-        }
-        
-        // Implement exponential backoff for reconnection
         if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = reconnectDelay * Math.pow(2, reconnectAttempts);
             reconnectAttempts++;
+            const currentDelay = reconnectDelay * Math.pow(2, reconnectAttempts - 1);
+            console.log(`Reconnecting in ${currentDelay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})...`);
             
-            updateConnectionStatus('error', `Reconnecting in ${delay/1000}s... (${reconnectAttempts}/${maxReconnectAttempts})`);
+            updateConnectionStatus('connecting', `Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`);
             
             setTimeout(() => {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
                 connectSSE(runId);
-            }, delay);
+            }, currentDelay);
         } else {
-            updateConnectionStatus('error', 'Failed to reconnect');
-            showMessage('Connection to the server was lost and could not be re-established.', 'error');
-            runSimulation.disabled = false;
-            runSimulation.textContent = 'Run Simulation';
+            console.error('Max reconnect attempts reached. Giving up.');
+            updateConnectionStatus('error', 'Connection lost');
             
-            // If no report was received, try to fetch it directly
-            if (!reportReceived && currentRunId) {
-                console.log("===> Auto-fetching report after connection failure");
-                setTimeout(fetchReportDirectly, 1000);
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
             }
+            
+            // Re-enable the run button
+            runSimulation.disabled = false;
+            runSimulation.innerHTML = '<i class="fas fa-play-circle"></i> Run Simulation';
         }
     }
 
-    // Update connection status helper
-    function updateConnectionStatus(state, message) {
-        statusIndicator.className = state ? `status-indicator ${state}` : 'status-indicator';
+    // Update connection status indicator
+    function updateConnectionStatus(state, message = '') {
+        if (!statusIndicator || !statusText) return;
+        
+        statusIndicator.className = 'status-indicator';
+        statusIndicator.classList.add(state);
         statusText.textContent = message;
     }
 
-    // Show message helper
+    // Show flash message
     function showMessage(message, type = 'info') {
-        // You could implement a toast or notification system here
-        console.log(`MESSAGE (${type}): ${message}`);
-        if (type === 'error') {
-            alert(message);
-        }
+        console.log(`Message (${type}):`, message);
+        // You could implement a toast/flash message system here
+        // For now, just log to console
     }
 
-    // Update workflow visualization based on status updates
+    // Initialize visualization with all agents inactive
+    function initializeVisualization() {
+        // Set all nodes to inactive
+        Object.keys(agentMap).forEach(key => {
+            nodeStates[key] = 'inactive';
+        });
+        
+        // Render the initial diagram
+        setTimeout(() => {
+            renderMermaidDiagram();
+        }, 100);
+    }
+    
+    // Reset visualization for a new run
+    function resetVisualization() {
+        // Set all nodes to inactive
+        Object.keys(agentMap).forEach(key => {
+            nodeStates[key] = 'inactive';
+        });
+        
+        // Set coordinator to running
+        nodeStates['coordinator'] = 'running';
+        
+        // Re-render the diagram
+        renderMermaidDiagram();
+    }
+
+    // Update workflow visualization based on status data
     function updateWorkflowVisualization(statusData) {
-        // Get the current mermaid graph
-        const mermaidGraph = document.getElementById('mermaidGraph');
+        // Skip if we don't have agent data
+        if (!statusData || !statusData.agent_id) return;
         
-        // Basic mermaid graph structure
-        let graphDefinition = `graph TD\n`;
+        // Normalize agent_id (convert CamelCase to snake_case if needed)
+        let agentKey = statusData.agent_id.replace(/([A-Z])/g, '_$1').toLowerCase();
+        if (agentKey.startsWith('_')) {
+            agentKey = agentKey.substring(1);
+        }
         
-        // Add nodes for each agent
-        const agents = ['coordinator', 'ehr', 'imaging', 'pathology', 'guideline', 'specialist', 'evaluation', 'summary'];
-        const agentLabels = {
-            'coordinator': 'Coordinator',
-            'ehr': 'EHR Agent',
-            'imaging': 'Imaging Agent',
-            'pathology': 'Pathology Agent',
-            'guideline': 'Guideline Agent',
-            'specialist': 'Specialist Agent',
-            'evaluation': 'Evaluation Agent',
-            'summary': 'Summary Agent'
+        // If it's a known variation, map it to the correct key
+        const agentVariations = {
+            'ehr': 'ehr_agent',
+            'imaging': 'imaging_agent',
+            'pathology': 'pathology_agent', 
+            'guideline': 'guideline_agent',
+            'specialist': 'specialist_agent',
+            'evaluation': 'evaluation_agent'
         };
         
-        agents.forEach(agent => {
-            const isActive = statusData.agent_id.toLowerCase() === agent;
-            const hasError = statusData.status === 'ERROR' && statusData.agent_id.toLowerCase() === agent;
-            
-            // Add node with appropriate class using Mermaid's ::: class syntax
-            graphDefinition += `    ${agent}["${agentLabels[agent]}"]`;
-            
-            // Apply class using ::: syntax
-            if (isActive) graphDefinition += `:::active`;
-            if (hasError) graphDefinition += `:::error`;
-            
-            graphDefinition += `\n`;
-        });
-        
-        // Add connections
-        graphDefinition += `    coordinator --> ehr\n`;
-        graphDefinition += `    coordinator --> imaging\n`;
-        graphDefinition += `    coordinator --> pathology\n`;
-        graphDefinition += `    coordinator --> guideline\n`;
-        graphDefinition += `    coordinator --> specialist\n`;
-        graphDefinition += `    coordinator --> evaluation\n`;
-        graphDefinition += `    coordinator --> summary\n`;
-        
-        // Add status message at the bottom
-        if (statusData.message) {
-            // Escape any quotes in the message to prevent mermaid syntax errors
-            const safeMessage = statusData.message.replace(/"/g, '\'');
-            graphDefinition += `    status["${safeMessage}"]\n`;
-            graphDefinition += `    style status fill:#f8f9fa,stroke:none\n`;
+        if (agentVariations[agentKey]) {
+            agentKey = agentVariations[agentKey];
         }
         
-        // Add class definitions
-        graphDefinition += `    classDef active fill:#28a745,stroke:#1e7e34,color:#fff,font-weight:bold;\n`;
-        graphDefinition += `    classDef error fill:#dc3545,stroke:#bd2130,color:#fff,font-weight:bold;\n`;
+        // Get status from the data
+        const status = statusData.status ? statusData.status.toLowerCase() : '';
         
-        // Update the mermaid diagram
-        mermaidGraph.textContent = graphDefinition;
-        
-        // Re-render with mermaid
-        mermaid.render('graphDiv', graphDefinition).then(result => {
-            mermaidGraph.innerHTML = result.svg;
-        }).catch(error => {
-            console.error('Error rendering mermaid graph:', error);
-        });
+        // Update agent state
+        updateAgentState(agentKey, status, statusData.message || '');
     }
 
-    // Display the MDT report
-    function displayReport(data) {
-        if (!data) {
-            reportOutput.textContent = 'No report data available';
+    // Update agent state and re-render diagram if needed
+    function updateAgentState(agentKey, status, message = '') {
+        // Skip if unknown agent
+        if (!agentMap[agentKey]) {
+            console.log(`Unknown agent: ${agentKey}`);
             return;
         }
         
-        console.log('Displaying report:', data);
+        // Map status to state
+        let newState = 'inactive';
+        
+        if (status === 'running' || status === 'start' || status === 'processing') {
+            newState = 'running';
+        } else if (status === 'complete' || status === 'completed' || status === 'success') {
+            newState = 'complete';
+        } else if (status === 'error' || status === 'failed' || status === 'failure') {
+            newState = 'error';
+        }
+        
+        // Only update and re-render if state changed
+        if (newState !== nodeStates[agentKey]) {
+            console.log(`Agent ${agentKey} changed state: ${nodeStates[agentKey]} -> ${newState}`);
+            nodeStates[agentKey] = newState;
+            renderMermaidDiagram();
+        }
+    }
+
+    // Render Mermaid diagram based on current node states
+    async function renderMermaidDiagram() {
+        const diagramContainer = document.getElementById('workflowDiagram');
+        if (!diagramContainer) return;
+        
+        const svgId = 'mermaid-workflow-svg';
+        
+        // Build class definitions
+        const classDefs = `
+            classDef inactive fill:#F3F4F6,stroke:#E5E7EB,color:#4B5563;
+            classDef running fill:#3B82F6,stroke:#2563EB,color:#FFFFFF,stroke-width:2px;
+            classDef complete fill:#10B981,stroke:#059669,color:#FFFFFF;
+            classDef error fill:#EF4444,stroke:#DC2626,color:#FFFFFF;
+        `;
+        
+        // Build graph definition
+        let definition = `graph LR\n${classDefs}\n`;
+        
+        // Add node definitions
+        Object.keys(agentMap).forEach(key => {
+            const agent = agentMap[key];
+            definition += `    ${agent.id}(${agent.name})\n`;
+        });
+        
+        // Add edges
+        definition += `    coordinator --> ehr\n`;
+        definition += `    coordinator --> imaging\n`;
+        definition += `    coordinator --> pathology\n`;
+        definition += `    coordinator --> guideline\n`;
+        definition += `    coordinator --> specialist\n`;
+        definition += `    coordinator --> evaluation\n`;
+        
+        // Add node classes based on states
+        Object.keys(nodeStates).forEach(key => {
+            if (agentMap[key]) {
+                definition += `    class ${agentMap[key].id} ${nodeStates[key]};\n`;
+            }
+        });
         
         try {
-            // Handle markdown summary if available
-            if (data.markdown_summary) {
-                // Create a section for the markdown summary at the top
-                const summaryDiv = document.createElement('div');
-                summaryDiv.id = 'mdt-summary';
-                summaryDiv.className = 'mdt-summary';
-                summaryDiv.innerHTML = markdownToHtml(data.markdown_summary);
-                
-                // Insert the summary at the top of the report output area
-                if (markdownView.firstChild) {
-                    markdownView.insertBefore(summaryDiv, markdownView.firstChild);
-                } else {
-                    markdownView.appendChild(summaryDiv);
-                }
-                
-                // Automatically switch to markdown view when summary is available
-                switchView('markdown');
-            }
+            // Show loading indicator
+            diagramContainer.innerHTML = '<div class="loading">Rendering diagram...</div>';
             
-            // Format the JSON for display
-            const formattedJson = JSON.stringify(data, null, 2);
-            reportOutput.textContent = formattedJson;
-            
-            // Format as Markdown
-            const markdownHtml = data.markdown_summary || convertJsonToMarkdown(data);
-            markdownOutput.innerHTML = markdownHtml;
-            
-            // Show the copy buttons
-            copyReport.style.display = 'block';
-            copyMarkdown.style.display = 'block';
-            
-            // Mark report as received
-            reportReceived = true;
+            // Render the diagram
+            const { svg } = await mermaid.render(svgId, definition);
+            diagramContainer.innerHTML = svg;
             
         } catch (error) {
-            console.error('Error formatting report:', error);
-            reportOutput.textContent = `Error formatting report: ${error.message}\n\nRaw data: ${JSON.stringify(data)}`;
+            console.error('Failed to render Mermaid diagram:', error);
+            diagramContainer.innerHTML = `
+                <details class="error-details">
+                    <summary>Error rendering diagram</summary>
+                    <p>${error.message || 'Unknown error'}</p>
+                    <pre>${definition}</pre>
+                </details>
+            `;
         }
     }
 
-    // Switch between JSON and Markdown views
-    function switchView(viewType) {
-        if (viewType === 'json') {
-            jsonView.style.display = 'block';
-            markdownView.style.display = 'none';
-            jsonViewBtn.classList.add('active');
-            markdownViewBtn.classList.remove('active');
-        } else {
-            jsonView.style.display = 'none';
-            markdownView.style.display = 'block';
-            jsonViewBtn.classList.remove('active');
-            markdownViewBtn.classList.add('active');
-        }
-    }
-
-    // Convert JSON to Markdown
-    function convertJsonToMarkdown(data) {
-        if (!data) return 'No data available';
+    // Display report in the UI
+    function displayReport(data) {
+        console.log('Displaying report data:', data);
         
-        let markdown = `# MDT Report for Patient ${data.patient_id || 'Unknown'}\n\n`;
+        // Set global flag that we've received a report
+        reportReceived = true;
         
-        // Add summary
-        if (data.summary) {
-            markdown += `## Summary\n${data.summary}\n\n`;
-        }
-        
-        // Add EHR Analysis
-        if (data.ehr_analysis) {
-            markdown += `## EHR Analysis\n`;
-            if (typeof data.ehr_analysis === 'object') {
-                Object.keys(data.ehr_analysis).forEach(key => {
-                    const value = data.ehr_analysis[key];
-                    if (typeof value === 'object') {
-                        markdown += `### ${formatTitle(key)}\n`;
-                        if (Array.isArray(value)) {
-                            value.forEach(item => {
-                                if (typeof item === 'object') {
-                                    Object.keys(item).forEach(itemKey => {
-                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
-                                    });
-                                } else {
-                                    markdown += `- ${item}\n`;
-                                }
-                            });
-                        } else {
-                            Object.keys(value).forEach(subKey => {
-                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
-                            });
-                        }
-                        markdown += '\n';
-                    } else {
-                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
-                    }
-                });
-            } else {
-                markdown += data.ehr_analysis + '\n\n';
+        try {
+            // Check if we need to look inside mdtReport structure
+            const reportData = data.mdtReport || data;
+            
+            // Extract patient ID if present
+            const patientId = reportData.patient_id || "Unknown Patient";
+            const patientIdElement = document.getElementById('patient-id');
+            if (patientIdElement) {
+                patientIdElement.textContent = patientId;
             }
-        }
-        
-        // Add Imaging Analysis
-        if (data.imaging_analysis) {
-            markdown += `## Imaging Analysis\n`;
-            if (typeof data.imaging_analysis === 'object') {
-                Object.keys(data.imaging_analysis).forEach(key => {
-                    const value = data.imaging_analysis[key];
-                    if (typeof value === 'object') {
-                        markdown += `### ${formatTitle(key)}\n`;
-                        if (Array.isArray(value)) {
-                            value.forEach(item => {
-                                if (typeof item === 'object') {
-                                    Object.keys(item).forEach(itemKey => {
-                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
-                                    });
-                                } else {
-                                    markdown += `- ${item}\n`;
-                                }
-                            });
-                        } else {
-                            Object.keys(value).forEach(subKey => {
-                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
-                            });
-                        }
-                        markdown += '\n';
-                    } else {
-                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
-                    }
-                });
-            } else {
-                markdown += data.imaging_analysis + '\n\n';
-            }
-        }
-        
-        // Add Pathology Analysis
-        if (data.pathology_analysis) {
-            markdown += `## Pathology Analysis\n`;
-            if (typeof data.pathology_analysis === 'object') {
-                Object.keys(data.pathology_analysis).forEach(key => {
-                    const value = data.pathology_analysis[key];
-                    if (typeof value === 'object') {
-                        markdown += `### ${formatTitle(key)}\n`;
-                        if (Array.isArray(value)) {
-                            value.forEach(item => {
-                                if (typeof item === 'object') {
-                                    Object.keys(item).forEach(itemKey => {
-                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
-                                    });
-                                } else {
-                                    markdown += `- ${item}\n`;
-                                }
-                            });
-                        } else {
-                            Object.keys(value).forEach(subKey => {
-                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
-                            });
-                        }
-                        markdown += '\n';
-                    } else {
-                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
-                    }
-                });
-            } else {
-                markdown += data.pathology_analysis + '\n\n';
-            }
-        }
-        
-        // Add Guideline Recommendations
-        if (data.guideline_recommendations && Array.isArray(data.guideline_recommendations)) {
-            markdown += `## Guideline Recommendations\n`;
-            data.guideline_recommendations.forEach((rec, index) => {
-                markdown += `### Recommendation ${index + 1}\n`;
-                if (typeof rec === 'object') {
-                    Object.keys(rec).forEach(key => {
-                        if (key !== 'source_details' || rec.source_details) {
-                            markdown += `- **${formatTitle(key)}**: ${formatValue(rec[key])}\n`;
-                        }
-                    });
+            
+            // Display the summary in the markdown view
+            const markdownSummary = document.getElementById('markdownSummary');
+            
+            // Get the markdown content using our helper function
+            const markdownContent = getMarkdownContent(reportData);
+            
+            if (markdownContent) {
+                console.log("Found markdown content to display");
+                
+                // Check if the content is already in HTML format
+                if (markdownContent.startsWith('<') && markdownContent.includes('</')) {
+                    markdownSummary.innerHTML = markdownContent;
                 } else {
-                    markdown += `${rec}\n`;
+                    markdownSummary.innerHTML = renderMarkdown(markdownContent);
                 }
-                markdown += '\n';
-            });
-        }
-        
-        // Add Specialist Assessment
-        if (data.specialist_assessment) {
-            markdown += `## Specialist Assessment\n`;
-            if (typeof data.specialist_assessment === 'object') {
-                Object.keys(data.specialist_assessment).forEach(key => {
-                    const value = data.specialist_assessment[key];
-                    if (typeof value === 'object') {
-                        markdown += `### ${formatTitle(key)}\n`;
-                        if (Array.isArray(value)) {
-                            value.forEach(item => {
-                                if (typeof item === 'object') {
-                                    Object.keys(item).forEach(itemKey => {
-                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
-                                    });
-                                } else {
-                                    markdown += `- ${item}\n`;
-                                }
-                            });
-                        } else {
-                            Object.keys(value).forEach(subKey => {
-                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
-                            });
-                        }
-                        markdown += '\n';
-                    } else {
-                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
-                    }
-                });
             } else {
-                markdown += data.specialist_assessment + '\n\n';
+                // If no suitable content found, create a basic summary
+                console.log("No suitable markdown content found, creating basic summary");
+                markdownSummary.innerHTML = renderMarkdown(`# Report for ${patientId}\n\nNo summary available.`);
             }
-        }
-        
-        // Add Treatment Options
-        if (data.treatment_options && Array.isArray(data.treatment_options)) {
-            markdown += `## Treatment Options\n`;
-            data.treatment_options.forEach((option, index) => {
-                markdown += `### Option ${index + 1}: ${option.name || ''}\n`;
-                if (typeof option === 'object') {
-                    Object.keys(option).forEach(key => {
-                        if (key !== 'name') {
-                            const value = option[key];
-                            if (Array.isArray(value)) {
-                                markdown += `#### ${formatTitle(key)}\n`;
-                                value.forEach(item => {
-                                    markdown += `- ${item}\n`;
-                                });
-                                markdown += '\n';
-                            } else if (typeof value === 'object') {
-                                markdown += `#### ${formatTitle(key)}\n`;
-                                Object.keys(value).forEach(subKey => {
-                                    markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
-                                });
-                                markdown += '\n';
-                            } else {
-                                markdown += `- **${formatTitle(key)}**: ${value}\n`;
-                            }
-                        }
-                    });
-                } else {
-                    markdown += `${option}\n`;
-                }
-                markdown += '\n';
-            });
-        }
-        
-        // Add Evaluation
-        if (data.evaluation_score !== undefined || data.evaluation_comments) {
-            markdown += `## Evaluation\n`;
-            if (data.evaluation_score !== undefined) {
-                markdown += `- **Score**: ${data.evaluation_score}\n`;
+            
+            // Create the agent detail sections
+            createAgentDetailSections(reportData);
+            
+            // Scroll to the report section if it exists
+            const reportSection = document.getElementById('report-section');
+            if (reportSection) {
+                reportSection.scrollIntoView({ behavior: 'smooth' });
             }
-            if (data.evaluation_comments) {
-                markdown += `- **Comments**: ${data.evaluation_comments}\n`;
-            }
-            markdown += '\n';
+            
+            // Update the current report data for copying
+            currentReportData = reportData;
+            
+            // Show the report container and hide loading indicators
+            document.querySelector('.report-container').style.display = 'flex';
+            
+            return true;
+        } catch (error) {
+            console.error('Error displaying report:', error);
+            markdownSummary.innerHTML = `
+                <div class="error">
+                    <h3>Error Displaying Report</h3>
+                    <p>An error occurred while trying to display the report: ${error.message}</p>
+                    <p>Please try again or contact support if the problem persists.</p>
+                </div>
+            `;
+            return false;
         }
-        
-        // Add metadata
-        markdown += `---\n`;
-        markdown += `Generated on: ${data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString()}\n`;
-        
-        // Convert the markdown to HTML for display
-        return markdownToHtml(markdown);
     }
     
-    // Helper function to format titles
+    // Create collapsible detail sections for each agent
+    function createAgentDetailSections(data) {
+        agentOutputs.innerHTML = '';
+        
+        // Check if we need to look inside mdtReport structure
+        const reportData = data.mdtReport || data;
+        
+        // Special handling for SummaryAgent output - ensure it's displayed in the markdown section
+        if (reportData.summary_agent || reportData.summaryAgent) {
+            const summaryAgentData = reportData.summary_agent || reportData.summaryAgent;
+            // Extract content and ensure it's displayed in the markdown view
+            if (summaryAgentData && typeof summaryAgentData === 'object') {
+                const content = summaryAgentData.output || summaryAgentData.content || summaryAgentData.text || summaryAgentData.markdown;
+                if (content && typeof content === 'string') {
+                    // Update the markdown view with this content
+                    const markdownView = document.getElementById('markdownSummary');
+                    markdownView.innerHTML = renderMarkdown(content);
+                    console.log("Updated markdown view with SummaryAgent content");
+                }
+            }
+        }
+        
+        // Map of expected agent keys in the report data
+        const agentDataMapping = {
+            'ehrReport': { key: 'ehr_agent', title: 'EHR Report' },
+            'imagingReport': { key: 'imaging_agent', title: 'Imaging Report' },
+            'pathologyReport': { key: 'pathology_agent', title: 'Pathology Report' },
+            'guidelineReport': { key: 'guideline_agent', title: 'Guideline Report' },
+            'specialistReport': { key: 'specialist_agent', title: 'Specialist Report' },
+            'evaluationReport': { key: 'evaluation_agent', title: 'Evaluation Report' }
+        };
+        
+        // Alternative keys that might be used
+        const alternativeKeys = {
+            'ehr_analysis': 'ehrReport',
+            'imaging_analysis': 'imagingReport',
+            'pathology_analysis': 'pathologyReport',
+            'guideline_recommendations': 'guidelineReport',
+            'specialist_assessment': 'specialistReport',
+            'evaluation': 'evaluationReport',
+            'evaluation_score': 'evaluationReport',
+            'evaluation_comments': 'evaluationReport',
+            'evaluation_formatted': 'evaluationReport'
+        };
+        
+        // Track which agent sections we've already created
+        const createdSections = new Set();
+        
+        // Check for the presence of any report data and create sections
+        let hasCreatedAnySection = false;
+        
+        // First try with the standard keys
+        Object.keys(agentDataMapping).forEach(dataKey => {
+            const agentInfo = agentDataMapping[dataKey];
+            if (!createdSections.has(agentInfo.key) && reportData[dataKey]) {
+                createSectionWithData(reportData[dataKey], agentInfo);
+                createdSections.add(agentInfo.key);
+                hasCreatedAnySection = true;
+            }
+        });
+        
+        // If some sections still need to be created, try with alternative keys
+        Object.keys(alternativeKeys).forEach(altKey => {
+            const mappedKey = alternativeKeys[altKey];
+            const agentInfo = agentDataMapping[mappedKey];
+            
+            // Skip if we already created this section
+            if (createdSections.has(agentInfo.key)) return;
+            
+            // Check if this alternative key has data
+            if (reportData[altKey]) {
+                // Special case for evaluation fields that need to be combined
+                if (mappedKey === 'evaluationReport' && 
+                   (altKey === 'evaluation_score' || altKey === 'evaluation_comments' || altKey === 'evaluation_formatted')) {
+                    // Only create evaluation section if we haven't already
+                    if (!createdSections.has('evaluation_agent')) {
+                        // Create combined evaluation data
+                        const evaluationData = {
+                            score: reportData.evaluation_score,
+                            comments: reportData.evaluation_comments || 'No comments provided',
+                            formatted: reportData.evaluation_formatted || '',
+                            evaluation: reportData.evaluation || {}
+                        };
+                        
+                        createSectionWithData(evaluationData, agentInfo);
+                        createdSections.add(agentInfo.key);
+                        hasCreatedAnySection = true;
+                    }
+                } else {
+                    // Regular alternative key handling
+                    createSectionWithData(reportData[altKey], agentInfo);
+                    createdSections.add(agentInfo.key);
+                    hasCreatedAnySection = true;
+                }
+            }
+        });
+        
+        // If we still don't have any sections, look for any agent-related keys
+        if (!hasCreatedAnySection) {
+            // Look for any keys that might contain agent data
+            Object.keys(reportData).forEach(key => {
+                let mappedAgent = null;
+                
+                // Check if the key contains any agent name
+                Object.keys(agentMap).forEach(agentKey => {
+                    // Skip if we already created this section
+                    if (createdSections.has(agentKey)) return;
+                    
+                    const agentName = agentKey.replace('_agent', '');
+                    if (key.toLowerCase().includes(agentName)) {
+                        // Found a potential match
+                        mappedAgent = {
+                            key: agentKey,
+                            title: agentMap[agentKey].name
+                        };
+                    }
+                });
+                
+                if (mappedAgent && !createdSections.has(mappedAgent.key)) {
+                    createSectionWithData(reportData[key], mappedAgent);
+                    createdSections.add(mappedAgent.key);
+                    hasCreatedAnySection = true;
+                }
+            });
+        }
+        
+        // Helper function to create a section with given data
+        function createSectionWithData(agentData, agentInfo) {
+            // Get agent info from map
+            const agentMapInfo = agentMap[agentInfo.key] || { icon: 'fa-file-medical' };
+            
+            // Create details element
+            const details = document.createElement('details');
+            details.className = 'agent-details';
+            
+            // Create summary (the clickable header)
+            const summary = document.createElement('summary');
+            summary.innerHTML = `
+                <div class="agent-icon">
+                    <i class="fas ${agentMapInfo.icon}"></i>
+                </div>
+                ${agentInfo.title}
+            `;
+            
+            // Create content container
+            const content = document.createElement('div');
+            content.className = 'agent-content';
+            
+            // Convert to markdown
+            let markdown = '';
+            
+            if (typeof agentData === 'string') {
+                markdown = agentData;
+            } else if (typeof agentData === 'object') {
+                if (Array.isArray(agentData)) {
+                    // Handle array data
+                    markdown = `# ${agentInfo.title}\n\n`;
+                    agentData.forEach((item, index) => {
+                        markdown += `## Item ${index + 1}\n\n`;
+                        if (typeof item === 'object') {
+                            Object.keys(item).forEach(key => {
+                                markdown += `### ${formatTitle(key)}\n\n${formatValue(item[key])}\n\n`;
+                            });
+                        } else {
+                            markdown += `${item}\n\n`;
+                        }
+                    });
+                } else {
+                    // Handle object data
+                    markdown = objectToMarkdown(agentData, agentInfo.title);
+                }
+            }
+            
+            // Apply markdown conversion
+            content.innerHTML = renderMarkdown(markdown);
+            
+            // Add to the details element
+            details.appendChild(summary);
+            details.appendChild(content);
+            
+            // Add to the page
+            agentOutputs.appendChild(details);
+        }
+    }
+    
+    // Generate a basic summary from the report data structure
+    function generateSummaryFromReport(data) {
+        let summary = '# MDT Summary Report\n\n';
+        
+        // Try to extract data from different possible structures
+        const reportData = data.mdtReport || data;
+        
+        // Add patient info if available
+        if (reportData.patientInfo || reportData.patient_info || reportData.patient) {
+            const patientInfo = reportData.patientInfo || reportData.patient_info || reportData.patient || {};
+            summary += '## Patient Information\n\n';
+            
+            // Try different possible field names
+            const name = patientInfo.name || patientInfo.patient_name || '';
+            const age = patientInfo.age || '';
+            const gender = patientInfo.gender || patientInfo.sex || '';
+            const diagnosis = patientInfo.diagnosis || patientInfo.primary_diagnosis || '';
+            
+            if (name) summary += `**Name:** ${name}\n\n`;
+            if (age) summary += `**Age:** ${age}\n\n`;
+            if (gender) summary += `**Gender:** ${gender}\n\n`;
+            if (diagnosis) summary += `**Diagnosis:** ${diagnosis}\n\n`;
+        }
+        
+        // Add conclusion if available
+        const conclusion = reportData.conclusion || reportData.final_conclusion || reportData.summary || '';
+        if (conclusion) {
+            summary += '## Conclusion\n\n';
+            summary += conclusion + '\n\n';
+        }
+        
+        // Add recommendations if available
+        const recommendations = reportData.recommendations || reportData.treatment_recommendations || [];
+        if (recommendations && (Array.isArray(recommendations) ? recommendations.length > 0 : recommendations)) {
+            summary += '## Recommendations\n\n';
+            
+            if (Array.isArray(recommendations)) {
+                recommendations.forEach(rec => {
+                    summary += `- ${rec}\n`;
+                });
+            } else if (typeof recommendations === 'string') {
+                summary += recommendations;
+            } else if (typeof recommendations === 'object') {
+                Object.keys(recommendations).forEach(key => {
+                    summary += `### ${formatTitle(key)}\n\n`;
+                    const value = recommendations[key];
+                    if (Array.isArray(value)) {
+                        value.forEach(item => {
+                            summary += `- ${item}\n`;
+                        });
+                    } else {
+                        summary += `${value}\n\n`;
+                    }
+                });
+            }
+        }
+        
+        // If we couldn't extract specific fields, use general data
+        if (summary === '# MDT Summary Report\n\n') {
+            Object.keys(reportData).forEach(key => {
+                // Skip keys that are likely to be agent reports
+                if (key.includes('Report') || key.includes('Analysis') || key.includes('assessment')) {
+                    return;
+                }
+                
+                const value = reportData[key];
+                if (value && typeof value !== 'object') {
+                    summary += `## ${formatTitle(key)}\n\n${value}\n\n`;
+                }
+            });
+        }
+        
+        return summary;
+    }
+    
+    // Convert an object to markdown
+    function objectToMarkdown(obj, title) {
+        let markdown = `# ${title}\n\n`;
+        
+        // Process each key
+        Object.keys(obj).forEach(key => {
+            const value = obj[key];
+            
+            // Format key as heading
+            const heading = formatTitle(key);
+            markdown += `## ${heading}\n\n`;
+            
+            // Format value based on type
+            markdown += formatValue(value);
+            markdown += '\n\n';
+        });
+        
+        return markdown;
+    }
+    
+    // Format a key into a title
     function formatTitle(str) {
-        if (!str) return '';
         return str
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, match => match.toUpperCase())
             .replace(/_/g, ' ')
-            .replace(/\b\w/g, l => l.toUpperCase());
+            .trim();
     }
     
-    // Helper function to format values
+    // Format a value based on its type
     function formatValue(value) {
-        if (value === null || value === undefined) return '';
-        if (typeof value === 'object') {
-            if (Array.isArray(value)) {
-                return value.join(', ');
-            } else {
-                return JSON.stringify(value);
-            }
+        if (value === null || value === undefined) {
+            return 'N/A';
         }
+        
+        if (Array.isArray(value)) {
+            if (value.length === 0) return 'None';
+            
+            if (typeof value[0] === 'object') {
+                // Array of objects - build a table
+                return buildMarkdownTable(value);
+            }
+            
+            // Simple array - build a list
+            return value.map(item => `- ${item}`).join('\n');
+        }
+        
+        if (typeof value === 'object') {
+            return objectToNestedMarkdown(value);
+        }
+        
         return value.toString();
     }
     
-    // Convert markdown to HTML - Enhanced for better rendering
-    function markdownToHtml(markdown) {
-        if (!markdown) return '';
+    // Convert an object to nested markdown
+    function objectToNestedMarkdown(obj) {
+        let markdown = '';
         
-        // Basic markdown to HTML conversion with improvements
-        return markdown
-            // Headers
-            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-            .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
+        Object.keys(obj).forEach(key => {
+            const value = obj[key];
+            const heading = formatTitle(key);
             
-            // Bold
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            markdown += `### ${heading}\n\n`;
             
-            // Italic
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            
-            // Checkbox lists (for Critical Next Steps)
-            .replace(/^\s*- \[ \] (.*$)/gm, '<li class="task-list-item"><input type="checkbox" disabled> $1</li>')
-            .replace(/^\s*- \[x\] (.*$)/gm, '<li class="task-list-item"><input type="checkbox" checked disabled> $1</li>')
-            
-            // Regular lists
-            .replace(/^\s*- (.*$)/gm, '<li>$1</li>')
-            .replace(/(<li.*>.*<\/li>\n)+/g, '<ul>$&</ul>')
-            
-            // Numbered lists
-            .replace(/^\s*\d+\.\s+(.*$)/gm, '<li>$1</li>')
-            .replace(/(<li>.*<\/li>\n)+/g, '<ol>$&</ol>')
-            
-            // Paragraphs
-            .replace(/^(?!<[holu]|<strong|<em)(.*$)/gm, function(match) {
-                return match.trim() ? '<p>' + match + '</p>' : '';
-            })
-            
-            // Fix empty lines between list items
-            .replace(/<\/ul>\n<ul>/g, '')
-            .replace(/<\/ol>\n<ol>/g, '')
-            
-            // Line breaks
-            .replace(/\n/g, '<br>');
+            if (value === null || value === undefined) {
+                markdown += 'N/A\n\n';
+            } else if (Array.isArray(value)) {
+                if (value.length === 0) {
+                    markdown += 'None\n\n';
+                } else if (typeof value[0] === 'object') {
+                    markdown += buildMarkdownTable(value) + '\n\n';
+                } else {
+                    markdown += value.map(item => `- ${item}`).join('\n') + '\n\n';
+                }
+            } else if (typeof value === 'object') {
+                Object.keys(value).forEach(subKey => {
+                    const subValue = value[subKey];
+                    const subHeading = formatTitle(subKey);
+                    
+                    markdown += `#### ${subHeading}\n\n`;
+                    markdown += (subValue || 'N/A').toString() + '\n\n';
+                });
+            } else {
+                markdown += value.toString() + '\n\n';
+            }
+        });
+        
+        return markdown;
+    }
+    
+    // Build a markdown table from an array of objects
+    function buildMarkdownTable(array) {
+        if (!array || array.length === 0) return 'No data available';
+        
+        // Get headers from the first object
+        const headers = Object.keys(array[0]);
+        if (headers.length === 0) return 'Empty data';
+        
+        // Build header row
+        let table = '| ' + headers.join(' | ') + ' |\n';
+        table += '| ' + headers.map(() => '---').join(' | ') + ' |\n';
+        
+        // Build data rows
+        array.forEach(obj => {
+            const row = headers.map(header => obj[header] || 'N/A');
+            table += '| ' + row.join(' | ') + ' |\n';
+        });
+        
+        return table;
     }
 
-    // Function to fetch report directly via REST API
-    async function fetchReportDirectly() {
-        const runId = currentRunId || (runIdInput ? runIdInput.value : null);
-        
+    // Fetch report manually
+    async function fetchReportManually() {
+        const runId = runIdInput.value.trim();
         if (!runId) {
-            showMessage('No simulation run ID available', 'error');
+            alert('Please enter a Run ID');
             return;
         }
         
         try {
-            fetchDirectButton.textContent = 'Fetching...';
-            fetchDirectButton.disabled = true;
+            // Show loading indicator
+            markdownSummary.innerHTML = '<div class="loading">Fetching report...</div>';
+            agentOutputs.innerHTML = '';
             
-            console.log(`===> FETCHING REPORT DIRECTLY FOR RUN ID: ${runId}`);
-            const response = await fetch(`${apiBase}/report/${runId}`);
+            // Try up to 3 times with a delay
+            let reportData = null;
+            let attempts = 0;
+            const maxAttempts = 3;
             
-            if (!response.ok) {
-                throw new Error(`Failed to fetch report: ${response.statusText}`);
+            while (attempts < maxAttempts && !reportData) {
+                try {
+                    attempts++;
+                    
+                    // Try the primary endpoint
+                    const response = await fetch(`${apiBase}/report/${runId}`);
+                    
+                    if (response.ok) {
+                        reportData = await response.json();
+                        console.log("Report fetched manually:", reportData);
+                        break;
+                    } else {
+                        console.warn(`Attempt ${attempts}/${maxAttempts} failed. Status: ${response.status}`);
+                        
+                        if (attempts < maxAttempts) {
+                            // Wait longer between each attempt
+                            const delay = 1000 * attempts;
+                            console.log(`Waiting ${delay}ms before retry...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Fetch attempt ${attempts} error:`, error);
+                    
+                    if (attempts < maxAttempts) {
+                        // Wait longer between each attempt
+                        const delay = 1000 * attempts;
+                        console.log(`Waiting ${delay}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
             }
             
-            const reportData = await response.json();
-            console.log("===> DIRECT FETCH REPORT DATA:", reportData);
+            // If we didn't get data from the primary endpoint, try the fallback
+            if (!reportData) {
+                console.log("Trying fallback report endpoint...");
+                try {
+                    const response = await fetch(`${apiBase}/latest-report/${runId}`);
+                    if (response.ok) {
+                        reportData = await response.json();
+                        console.log("Report fetched from fallback endpoint:", reportData);
+                    }
+                } catch (fallbackError) {
+                    console.error("Fallback report endpoint failed:", fallbackError);
+                }
+            }
             
-            displayReport(reportData);
-            fetchDirectButton.textContent = 'Report Fetched Successfully';
-            setTimeout(() => {
-                fetchDirectButton.textContent = 'Fetch Report Directly';
-                fetchDirectButton.disabled = false;
-            }, 3000);
+            // If we have report data, display it
+            if (reportData) {
+                displayReport(reportData);
+            } else {
+                markdownSummary.innerHTML = `
+                    <div class="error">
+                        <h3>Error: Unable to fetch report</h3>
+                        <p>We couldn't retrieve the report for run ID: ${runId}</p>
+                        <p>The report might not exist or there could be a server error.</p>
+                    </div>
+                `;
+                agentOutputs.innerHTML = '';
+            }
             
         } catch (error) {
-            console.error('Error fetching report directly:', error);
-            fetchDirectButton.textContent = 'Fetch Report Directly';
-            fetchDirectButton.disabled = false;
-            showMessage(`Error: ${error.message}`, 'error');
+            console.error('Error fetching report manually:', error);
+            markdownSummary.innerHTML = `
+                <div class="error">
+                    <h3>Error: ${error.message}</h3>
+                    <p>Please check that the Run ID is correct and try again.</p>
+                </div>
+            `;
+            agentOutputs.innerHTML = '';
         }
     }
 
-    // Log initialization complete
-    console.log("App.js initialization complete");
+    // Fetch report directly (used when simulation completes)
+    async function fetchReportDirectly(showLoading = true) {
+        if (!currentRunId) {
+            console.log('No run ID available for direct report fetch');
+            return;
+        }
+        
+        try {
+            // Show loading indicator if requested
+            if (showLoading) {
+                markdownSummary.innerHTML = '<div class="loading">Fetching report...</div>';
+            }
+            
+            // First try the /report/{runId} endpoint
+            console.log(`Attempting to fetch report for run ID: ${currentRunId}`);
+            
+            // Try up to 3 times with a delay
+            let reportData = null;
+            let attempts = 0;
+            const maxAttempts = 3;
+            
+            while (attempts < maxAttempts && !reportData) {
+                try {
+                    attempts++;
+                    
+                    // Try the primary endpoint
+                    const response = await fetch(`${apiBase}/report/${currentRunId}`);
+                    
+                    if (response.ok) {
+                        reportData = await response.json();
+                        console.log("Report fetched successfully:", reportData);
+                        
+                        // Debug: Check for markdown_summary field
+                        if (reportData.markdown_summary) {
+                            console.log("DEBUG: markdown_summary field found:", reportData.markdown_summary.substring(0, 100) + "...");
+                        } else {
+                            console.log("DEBUG: No markdown_summary field found in report data");
+                        }
+                        
+                        break;
+                    } else {
+                        console.warn(`Attempt ${attempts}/${maxAttempts} failed. Status: ${response.status}`);
+                        
+                        if (attempts < maxAttempts) {
+                            // Wait longer between each attempt
+                            const delay = 1000 * attempts;
+                            console.log(`Waiting ${delay}ms before retry...`);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Fetch attempt ${attempts} error:`, error);
+                    
+                    if (attempts < maxAttempts) {
+                        // Wait longer between each attempt
+                        const delay = 1000 * attempts;
+                        console.log(`Waiting ${delay}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+            
+            // If we didn't get data from the primary endpoint, try the fallback
+            if (!reportData) {
+                console.log("Trying fallback report endpoint...");
+                try {
+                    const response = await fetch(`${apiBase}/latest-report/${currentRunId}`);
+                    if (response.ok) {
+                        reportData = await response.json();
+                        console.log("Report fetched from fallback endpoint:", reportData);
+                        
+                        // Debug: Check for markdown_summary field
+                        if (reportData.markdown_summary) {
+                            console.log("DEBUG: markdown_summary field found in fallback data:", reportData.markdown_summary.substring(0, 100) + "...");
+                        } else {
+                            console.log("DEBUG: No markdown_summary field found in fallback data");
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error("Fallback report endpoint failed:", fallbackError);
+                }
+            }
+            
+            // If we have report data, display it
+            if (reportData) {
+                displayReport(reportData);
+                return true; // Report was successfully fetched and displayed
+            } else {
+                // Only show error if we're explicitly showing loading
+                if (showLoading) {
+                    // Create a basic report from the status updates we've seen
+                    console.log("Creating synthetic report from status updates");
+                    const syntheticReport = createSyntheticReport();
+                    displayReport(syntheticReport);
+                }
+                return false; // Report could not be fetched
+            }
+            
+        } catch (error) {
+            console.error('Error fetching report directly:', error);
+            if (showLoading) {
+                markdownSummary.innerHTML = `
+                    <div class="error">
+                        <p>Error fetching report: ${error.message}</p>
+                        <p>You can try manually fetching the report using the Run ID.</p>
+                    </div>
+                `;
+            }
+            return false; // Report could not be fetched
+        }
+    }
+
+    // Create a synthetic report from status updates we've seen
+    function createSyntheticReport() {
+        // Basic report structure
+        const report = {
+            patient_id: currentRunId,
+            summary: "# MDT Simulation Summary\n\nThe simulation completed, but we couldn't retrieve the full report data from the server. This is a simplified summary based on the workflow status.",
+            timestamp: new Date().toISOString()
+        };
+        
+        // Add information about which agents completed
+        let agentStatuses = '';
+        Object.keys(nodeStates).forEach(key => {
+            const state = nodeStates[key];
+            const name = agentMap[key] ? agentMap[key].name : key;
+            const statusEmoji = state === 'complete' ? '✅' : state === 'error' ? '❌' : state === 'running' ? '⏳' : '⏹️';
+            agentStatuses += `- ${statusEmoji} **${name}**: ${state}\n`;
+        });
+        
+        report.summary += "\n\n## Agent Statuses\n\n" + agentStatuses;
+        
+        // Add recommendation to fetch report manually
+        report.summary += "\n\n## Recommendations\n\n" +
+            "- Try fetching the report manually with the Run ID\n" +
+            "- Check the server logs for more information about any errors\n" +
+            "- If the issue persists, contact system support";
+        
+        return report;
+    }
+
+    // Basic markdown parser fallback in case marked.js is not loaded
+    function basicMarkdownToHtml(markdown) {
+        if (!markdown) return '';
+        
+        // Replace headers
+        let html = markdown
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^#### (.*$)/gm, '<h4>$1</h4>');
+            
+        // Replace bold and italic
+        html = html
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+        // Replace lists
+        html = html
+            .replace(/^\s*- (.*$)/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>\n)+/g, '<ul>$&</ul>');
+            
+        // Replace paragraphs
+        html = html
+            .replace(/^(?!<h|<ul|<li|<\/)(.*$)/gm, function(match) {
+                return match.trim() ? '<p>' + match + '</p>' : '';
+            });
+            
+        return html;
+    }
+
+    // Safe markdown rendering function
+    function renderMarkdown(markdown) {
+        if (!markdown) return '';
+        
+        try {
+            // Try to use marked.js if available
+            if (typeof marked !== 'undefined') {
+                return marked.parse(markdown);
+            } else {
+                // Fallback to basic parser
+                console.warn('marked.js not available, using basic markdown parser');
+                return basicMarkdownToHtml(markdown);
+            }
+        } catch (error) {
+            console.error('Error parsing markdown:', error);
+            // Return escaped text as fallback
+            return markdown
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+        }
+    }
+
+    // Helper function to ensure markdown is properly extracted 
+    function getMarkdownContent(data) {
+        // Try to get content from multiple possible locations
+        if (data.markdown_summary) {
+            return data.markdown_summary;
+        } 
+        
+        // Look for summary agent output in specific fields
+        if (data.summary_agent && data.summary_agent.output) {
+            return data.summary_agent.output;
+        }
+        
+        // Check if there's a SummaryAgent section in the data
+        for (const key in data) {
+            if (key.toLowerCase().includes('summary') && typeof data[key] === 'object') {
+                if (data[key].markdown || data[key].text || data[key].content) {
+                    return data[key].markdown || data[key].text || data[key].content;
+                }
+            }
+        }
+        
+        // Fall back to regular summary if nothing else is found
+        if (data.summary && typeof data.summary === 'string') {
+            return data.summary;
+        }
+        
+        return null;
+    }
 }); 
