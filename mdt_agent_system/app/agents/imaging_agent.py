@@ -61,10 +61,33 @@ class ImagingAgent(BaseSpecializedAgent):
         
         # Add EHR context if available
         if context and "ehr_analysis" in context:
-            imaging_context["ehr_context"] = context["ehr_analysis"]
+            # Ensure we're not passing an object with dict() method but actual dictionary data
+            if hasattr(context["ehr_analysis"], "dict") and callable(context["ehr_analysis"].dict):
+                imaging_context["ehr_context"] = context["ehr_analysis"].dict()
+            else:
+                imaging_context["ehr_context"] = context["ehr_analysis"]
         
         # Convert to JSON string with indentation for better LLM processing
-        context_str = json.dumps(imaging_context, indent=2)
+        # Use a custom JSON encoder to handle datetime objects and other special types
+        class CustomJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if hasattr(obj, "dict") and callable(obj.dict):
+                    return obj.dict()
+                if hasattr(obj, "__dict__"):
+                    return obj.__dict__
+                # Handle other special types as needed
+                return str(obj)  # Convert any other objects to string
+        
+        try:
+            context_str = json.dumps(imaging_context, indent=2, cls=CustomJSONEncoder)
+        except Exception as e:
+            logger.error(f"Error serializing imaging context: {str(e)}")
+            # Fallback serialization with simpler data
+            simple_context = {
+                "patient_id": str(imaging_context.get("patient_id", "")),
+                "current_condition": str(imaging_context.get("current_condition", ""))
+            }
+            context_str = json.dumps(simple_context, indent=2)
         
         return {
             "context": context_str,
@@ -206,6 +229,23 @@ class ImagingAgent(BaseSpecializedAgent):
                 if not structured_output["staging"]["key_findings"]:
                     structured_output["staging"]["key_findings"] = ["Imaging findings analyzed"]
             
+            # Add formatted string representations for nested objects
+            # Format disease_extent
+            disease_extent = structured_output["disease_extent"]
+            structured_output["disease_extent_formatted"] = (
+                f"Primary Tumor: {disease_extent['primary_tumor']}. "
+                f"Nodal Status: {disease_extent['nodal_status']}. "
+                f"Metastatic Status: {disease_extent['metastatic_status']}."
+            )
+            
+            # Format staging
+            staging = structured_output["staging"]
+            key_findings_text = "; ".join(staging["key_findings"]) if staging["key_findings"] else "None specified"
+            structured_output["staging_formatted"] = (
+                f"Clinical Stage: {staging['clinical_stage']}. "
+                f"Key Findings: {key_findings_text}"
+            )
+            
             return structured_output
             
         except Exception as e:
@@ -219,9 +259,11 @@ class ImagingAgent(BaseSpecializedAgent):
                     "nodal_status": "See raw output",
                     "metastatic_status": "See raw output"
                 },
+                "disease_extent_formatted": "Error parsing disease extent information. See raw output.",
                 "staging": {
                     "clinical_stage": "Not extracted",
                     "key_findings": ["See raw output"]
                 },
+                "staging_formatted": "Error parsing staging information. See raw output.",
                 "processing_error": str(e)
             } 

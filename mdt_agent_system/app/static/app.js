@@ -10,6 +10,20 @@ document.addEventListener('DOMContentLoaded', () => {
             useMaxWidth: true,
             htmlLabels: true,
             curve: 'basis'
+        },
+        classDef: {
+            active: {
+                fill: '#28a745',
+                stroke: '#1e7e34',
+                color: '#fff',
+                'font-weight': 'bold'
+            },
+            error: {
+                fill: '#dc3545',
+                stroke: '#bd2130',
+                color: '#fff',
+                'font-weight': 'bold'
+            }
         }
     });
 
@@ -24,6 +38,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusText = connectionStatus.querySelector('.status-text');
     const fetchDirectButton = document.getElementById('fetchDirectButton');
     
+    // View toggling elements
+    const jsonViewBtn = document.getElementById('jsonViewBtn');
+    const markdownViewBtn = document.getElementById('markdownViewBtn');
+    const jsonView = document.getElementById('jsonView');
+    const markdownView = document.getElementById('markdownView');
+    const markdownOutput = document.getElementById('markdownOutput');
+    const copyMarkdown = document.getElementById('copyMarkdown');
+    
     // Verify DOM elements are found
     console.log("DOM Elements found:", {
         fileInput: !!fileInput,
@@ -34,7 +56,13 @@ document.addEventListener('DOMContentLoaded', () => {
         connectionStatus: !!connectionStatus,
         statusIndicator: !!statusIndicator,
         statusText: !!statusText,
-        fetchDirectButton: !!fetchDirectButton
+        fetchDirectButton: !!fetchDirectButton,
+        jsonViewBtn: !!jsonViewBtn,
+        markdownViewBtn: !!markdownViewBtn,
+        jsonView: !!jsonView,
+        markdownView: !!markdownView,
+        markdownOutput: !!markdownOutput,
+        copyMarkdown: !!copyMarkdown
     });
     
     // Get run ID input and manual fetch button
@@ -54,7 +82,10 @@ document.addEventListener('DOMContentLoaded', () => {
     fileInput.addEventListener('change', handleFileSelection);
     runSimulation.addEventListener('click', startSimulation);
     copyReport.addEventListener('click', copyReportToClipboard);
+    copyMarkdown.addEventListener('click', copyMarkdownToClipboard);
     fetchDirectButton.addEventListener('click', fetchReportDirectly);
+    jsonViewBtn.addEventListener('click', () => switchView('json'));
+    markdownViewBtn.addEventListener('click', () => switchView('markdown'));
 
     // File drag and drop enhancements
     const fileInputLabel = document.querySelector('.file-input-label');
@@ -188,6 +219,28 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(err => {
                 console.error('Failed to copy report:', err);
                 showMessage('Failed to copy report to clipboard', 'error');
+            });
+    }
+
+    // Copy markdown to clipboard
+    function copyMarkdownToClipboard() {
+        // Get the markdown as plain text without HTML formatting
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = markdownOutput.innerHTML;
+        const markdownText = tempDiv.textContent || tempDiv.innerText || '';
+        
+        navigator.clipboard.writeText(markdownText)
+            .then(() => {
+                // Visual feedback
+                const originalText = copyMarkdown.textContent;
+                copyMarkdown.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyMarkdown.textContent = originalText;
+                }, 2000);
+            })
+            .catch(err => {
+                console.error('Failed to copy markdown:', err);
+                showMessage('Failed to copy markdown to clipboard', 'error');
             });
     }
 
@@ -435,13 +488,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const isActive = statusData.agent_id.toLowerCase() === agent;
             const hasError = statusData.status === 'ERROR' && statusData.agent_id.toLowerCase() === agent;
             
-            // Determine node class
-            let nodeClass = '';
-            if (isActive) nodeClass = 'class="active"';
-            if (hasError) nodeClass = 'class="error"';
+            // Add node with appropriate class using Mermaid's ::: class syntax
+            graphDefinition += `    ${agent}["${agentLabels[agent]}"]`;
             
-            // Add node with appropriate class
-            graphDefinition += `    ${agent}${nodeClass}("${agentLabels[agent]}")\n`;
+            // Apply class using ::: syntax
+            if (isActive) graphDefinition += `:::active`;
+            if (hasError) graphDefinition += `:::error`;
+            
+            graphDefinition += `\n`;
         });
         
         // Add connections
@@ -456,9 +510,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statusData.message) {
             // Escape any quotes in the message to prevent mermaid syntax errors
             const safeMessage = statusData.message.replace(/"/g, '\'');
-            graphDefinition += `    status("${safeMessage}")\n`;
+            graphDefinition += `    status["${safeMessage}"]\n`;
             graphDefinition += `    style status fill:#f8f9fa,stroke:none\n`;
         }
+        
+        // Add class definitions
+        graphDefinition += `    classDef active fill:#28a745,stroke:#1e7e34,color:#fff,font-weight:bold;\n`;
+        graphDefinition += `    classDef error fill:#dc3545,stroke:#bd2130,color:#fff,font-weight:bold;\n`;
         
         // Update the mermaid diagram
         mermaidGraph.textContent = graphDefinition;
@@ -477,11 +535,300 @@ document.addEventListener('DOMContentLoaded', () => {
         const formattedReport = JSON.stringify(reportData, null, 2);
         reportOutput.textContent = formattedReport;
         
-        // Enable copy button
+        // Generate and display markdown
+        const markdownText = convertJsonToMarkdown(reportData);
+        markdownOutput.innerHTML = markdownText;
+        
+        // Enable copy buttons
         copyReport.disabled = false;
+        copyMarkdown.disabled = false;
         
         // Scroll to report
         reportOutput.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Switch between JSON and Markdown views
+    function switchView(viewType) {
+        if (viewType === 'json') {
+            jsonView.style.display = 'block';
+            markdownView.style.display = 'none';
+            jsonViewBtn.classList.add('active');
+            markdownViewBtn.classList.remove('active');
+        } else {
+            jsonView.style.display = 'none';
+            markdownView.style.display = 'block';
+            jsonViewBtn.classList.remove('active');
+            markdownViewBtn.classList.add('active');
+        }
+    }
+
+    // Convert JSON to Markdown
+    function convertJsonToMarkdown(data) {
+        if (!data) return 'No data available';
+        
+        let markdown = `# MDT Report for Patient ${data.patient_id || 'Unknown'}\n\n`;
+        
+        // Add summary
+        if (data.summary) {
+            markdown += `## Summary\n${data.summary}\n\n`;
+        }
+        
+        // Add EHR Analysis
+        if (data.ehr_analysis) {
+            markdown += `## EHR Analysis\n`;
+            if (typeof data.ehr_analysis === 'object') {
+                Object.keys(data.ehr_analysis).forEach(key => {
+                    const value = data.ehr_analysis[key];
+                    if (typeof value === 'object') {
+                        markdown += `### ${formatTitle(key)}\n`;
+                        if (Array.isArray(value)) {
+                            value.forEach(item => {
+                                if (typeof item === 'object') {
+                                    Object.keys(item).forEach(itemKey => {
+                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
+                                    });
+                                } else {
+                                    markdown += `- ${item}\n`;
+                                }
+                            });
+                        } else {
+                            Object.keys(value).forEach(subKey => {
+                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
+                            });
+                        }
+                        markdown += '\n';
+                    } else {
+                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
+                    }
+                });
+            } else {
+                markdown += data.ehr_analysis + '\n\n';
+            }
+        }
+        
+        // Add Imaging Analysis
+        if (data.imaging_analysis) {
+            markdown += `## Imaging Analysis\n`;
+            if (typeof data.imaging_analysis === 'object') {
+                Object.keys(data.imaging_analysis).forEach(key => {
+                    const value = data.imaging_analysis[key];
+                    if (typeof value === 'object') {
+                        markdown += `### ${formatTitle(key)}\n`;
+                        if (Array.isArray(value)) {
+                            value.forEach(item => {
+                                if (typeof item === 'object') {
+                                    Object.keys(item).forEach(itemKey => {
+                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
+                                    });
+                                } else {
+                                    markdown += `- ${item}\n`;
+                                }
+                            });
+                        } else {
+                            Object.keys(value).forEach(subKey => {
+                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
+                            });
+                        }
+                        markdown += '\n';
+                    } else {
+                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
+                    }
+                });
+            } else {
+                markdown += data.imaging_analysis + '\n\n';
+            }
+        }
+        
+        // Add Pathology Analysis
+        if (data.pathology_analysis) {
+            markdown += `## Pathology Analysis\n`;
+            if (typeof data.pathology_analysis === 'object') {
+                Object.keys(data.pathology_analysis).forEach(key => {
+                    const value = data.pathology_analysis[key];
+                    if (typeof value === 'object') {
+                        markdown += `### ${formatTitle(key)}\n`;
+                        if (Array.isArray(value)) {
+                            value.forEach(item => {
+                                if (typeof item === 'object') {
+                                    Object.keys(item).forEach(itemKey => {
+                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
+                                    });
+                                } else {
+                                    markdown += `- ${item}\n`;
+                                }
+                            });
+                        } else {
+                            Object.keys(value).forEach(subKey => {
+                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
+                            });
+                        }
+                        markdown += '\n';
+                    } else {
+                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
+                    }
+                });
+            } else {
+                markdown += data.pathology_analysis + '\n\n';
+            }
+        }
+        
+        // Add Guideline Recommendations
+        if (data.guideline_recommendations && Array.isArray(data.guideline_recommendations)) {
+            markdown += `## Guideline Recommendations\n`;
+            data.guideline_recommendations.forEach((rec, index) => {
+                markdown += `### Recommendation ${index + 1}\n`;
+                if (typeof rec === 'object') {
+                    Object.keys(rec).forEach(key => {
+                        if (key !== 'source_details' || rec.source_details) {
+                            markdown += `- **${formatTitle(key)}**: ${formatValue(rec[key])}\n`;
+                        }
+                    });
+                } else {
+                    markdown += `${rec}\n`;
+                }
+                markdown += '\n';
+            });
+        }
+        
+        // Add Specialist Assessment
+        if (data.specialist_assessment) {
+            markdown += `## Specialist Assessment\n`;
+            if (typeof data.specialist_assessment === 'object') {
+                Object.keys(data.specialist_assessment).forEach(key => {
+                    const value = data.specialist_assessment[key];
+                    if (typeof value === 'object') {
+                        markdown += `### ${formatTitle(key)}\n`;
+                        if (Array.isArray(value)) {
+                            value.forEach(item => {
+                                if (typeof item === 'object') {
+                                    Object.keys(item).forEach(itemKey => {
+                                        markdown += `- **${formatTitle(itemKey)}**: ${item[itemKey]}\n`;
+                                    });
+                                } else {
+                                    markdown += `- ${item}\n`;
+                                }
+                            });
+                        } else {
+                            Object.keys(value).forEach(subKey => {
+                                markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
+                            });
+                        }
+                        markdown += '\n';
+                    } else {
+                        markdown += `### ${formatTitle(key)}\n${value}\n\n`;
+                    }
+                });
+            } else {
+                markdown += data.specialist_assessment + '\n\n';
+            }
+        }
+        
+        // Add Treatment Options
+        if (data.treatment_options && Array.isArray(data.treatment_options)) {
+            markdown += `## Treatment Options\n`;
+            data.treatment_options.forEach((option, index) => {
+                markdown += `### Option ${index + 1}: ${option.name || ''}\n`;
+                if (typeof option === 'object') {
+                    Object.keys(option).forEach(key => {
+                        if (key !== 'name') {
+                            const value = option[key];
+                            if (Array.isArray(value)) {
+                                markdown += `#### ${formatTitle(key)}\n`;
+                                value.forEach(item => {
+                                    markdown += `- ${item}\n`;
+                                });
+                                markdown += '\n';
+                            } else if (typeof value === 'object') {
+                                markdown += `#### ${formatTitle(key)}\n`;
+                                Object.keys(value).forEach(subKey => {
+                                    markdown += `- **${formatTitle(subKey)}**: ${value[subKey]}\n`;
+                                });
+                                markdown += '\n';
+                            } else {
+                                markdown += `- **${formatTitle(key)}**: ${value}\n`;
+                            }
+                        }
+                    });
+                } else {
+                    markdown += `${option}\n`;
+                }
+                markdown += '\n';
+            });
+        }
+        
+        // Add Evaluation
+        if (data.evaluation_score !== undefined || data.evaluation_comments) {
+            markdown += `## Evaluation\n`;
+            if (data.evaluation_score !== undefined) {
+                markdown += `- **Score**: ${data.evaluation_score}\n`;
+            }
+            if (data.evaluation_comments) {
+                markdown += `- **Comments**: ${data.evaluation_comments}\n`;
+            }
+            markdown += '\n';
+        }
+        
+        // Add metadata
+        markdown += `---\n`;
+        markdown += `Generated on: ${data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString()}\n`;
+        
+        // Convert the markdown to HTML for display
+        return markdownToHtml(markdown);
+    }
+    
+    // Helper function to format titles
+    function formatTitle(str) {
+        if (!str) return '';
+        return str
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, l => l.toUpperCase());
+    }
+    
+    // Helper function to format values
+    function formatValue(value) {
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'object') {
+            if (Array.isArray(value)) {
+                return value.join(', ');
+            } else {
+                return JSON.stringify(value);
+            }
+        }
+        return value.toString();
+    }
+    
+    // Convert markdown to HTML
+    function markdownToHtml(markdown) {
+        if (!markdown) return '';
+        
+        // Basic markdown to HTML conversion
+        return markdown
+            // Headers
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
+            
+            // Bold
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            
+            // Italic
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            
+            // Lists
+            .replace(/^\s*- (.*$)/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>\n)+/g, '<ul>$&</ul>')
+            
+            // Paragraphs
+            .replace(/^(?!<[hlu]|<strong|<em)(.*$)/gm, function(match) {
+                return match.trim() ? '<p>' + match + '</p>' : '';
+            })
+            
+            // Fix empty lines between list items
+            .replace(/<\/ul>\n<ul>/g, '')
+            
+            // Line breaks
+            .replace(/\n/g, '<br>');
     }
 
     // Function to fetch report directly via REST API

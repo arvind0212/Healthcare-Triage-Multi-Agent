@@ -64,8 +64,21 @@
                 </div>
                 <div class="report-container">
                     <button id="fetchDirectButton" class="primary-button" style="background-color: #f0ad4e; margin-bottom: 10px;">Fetch Report Directly</button>
-                    <pre id="reportOutput">No report generated yet</pre>
-                    <button id="copyReport" class="secondary-button" disabled>Copy Report</button>
+                    
+                    <div class="report-view-toggle" style="margin-bottom: 10px; display: flex;">
+                        <button id="jsonViewBtn" class="view-toggle-btn active">JSON View</button>
+                        <button id="markdownViewBtn" class="view-toggle-btn">Markdown View</button>
+                    </div>
+                    
+                    <div id="jsonView">
+                        <pre id="reportOutput">No report generated yet</pre>
+                        <button id="copyReport" class="secondary-button" disabled>Copy JSON</button>
+                    </div>
+                    
+                    <div id="markdownView" style="display: none;">
+                        <div id="markdownOutput" class="markdown-content">No report generated yet</div>
+                        <button id="copyMarkdown" class="secondary-button" disabled>Copy Markdown</button>
+                    </div>
                 </div>
             </section>
         </main>

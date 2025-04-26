@@ -58,18 +58,33 @@ class EvaluationAgent(BaseSpecializedAgent):
             "current_condition": patient_case.current_condition
         }
         
+        # Process dictionary conversions to prevent [object Object] in the output
+        def convert_to_dict(obj):
+            if hasattr(obj, "dict") and callable(obj.dict):
+                return obj.dict()
+            elif hasattr(obj, "__dict__"):
+                return obj.__dict__
+            else:
+                return obj
+        
         # Add all available analyses from previous agent steps
         if context:
             if "ehr_analysis" in context:
-                mdt_report["ehr_analysis"] = context["ehr_analysis"]
+                mdt_report["ehr_analysis"] = convert_to_dict(context["ehr_analysis"])
             if "imaging_analysis" in context:
-                mdt_report["imaging_analysis"] = context["imaging_analysis"]
+                mdt_report["imaging_analysis"] = convert_to_dict(context["imaging_analysis"])
             if "pathology_analysis" in context:
-                mdt_report["pathology_analysis"] = context["pathology_analysis"]
+                mdt_report["pathology_analysis"] = convert_to_dict(context["pathology_analysis"])
             if "guideline_recommendations" in context:
-                mdt_report["guideline_recommendations"] = context["guideline_recommendations"]
+                # If it's a list, process each item
+                if isinstance(context["guideline_recommendations"], list):
+                    mdt_report["guideline_recommendations"] = [
+                        convert_to_dict(item) for item in context["guideline_recommendations"]
+                    ]
+                else:
+                    mdt_report["guideline_recommendations"] = convert_to_dict(context["guideline_recommendations"])
             if "specialist_assessment" in context:
-                mdt_report["specialist_assessment"] = context["specialist_assessment"]
+                mdt_report["specialist_assessment"] = convert_to_dict(context["specialist_assessment"])
         
         # Define evaluation criteria for the agent
         evaluation_criteria = {
@@ -80,9 +95,29 @@ class EvaluationAgent(BaseSpecializedAgent):
             "documentation": "Assesses the clarity and completeness of documentation"
         }
         
+        # Custom JSON encoder to handle complex objects
+        class CustomJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if hasattr(obj, "dict") and callable(obj.dict):
+                    return obj.dict()
+                if hasattr(obj, "__dict__"):
+                    return obj.__dict__
+                # Handle other special types as needed
+                return str(obj)  # Convert any other objects to string
+        
         # Convert to JSON string with indentation for better LLM processing
-        mdt_report_str = json.dumps(mdt_report, indent=2)
-        criteria_str = json.dumps(evaluation_criteria, indent=2)
+        try:
+            mdt_report_str = json.dumps(mdt_report, indent=2, cls=CustomJSONEncoder)
+            criteria_str = json.dumps(evaluation_criteria, indent=2)
+        except Exception as e:
+            logger.error(f"Error serializing evaluation context: {str(e)}")
+            # Fallback serialization with simpler data
+            simple_report = {
+                "patient_id": str(mdt_report.get("patient_id", "")),
+                "error": f"Failed to serialize complete report: {str(e)}"
+            }
+            mdt_report_str = json.dumps(simple_report, indent=2)
+            criteria_str = json.dumps(evaluation_criteria, indent=2)
         
         return {
             "context": f"MDT Report:\n{mdt_report_str}\n\nEvaluation Criteria:\n{criteria_str}",
@@ -117,12 +152,14 @@ class EvaluationAgent(BaseSpecializedAgent):
             lines = llm_output.split('\n')
             current_section = None
             
-            # First, try to extract the score
+            # First, try to extract the score - look for overall score
+            overall_score = None
             for line in lines:
                 line = line.strip()
-                if "score" in line.lower() and ":" in line:
+                # Look for patterns like "Overall Quality Score: 0.85" or "Score: 0.9"
+                if (("overall" in line.lower() and "score" in line.lower()) or 
+                    line.lower().startswith("score:")) and ":" in line:
                     score_text = line.split(":", 1)[1].strip()
-                    # Try to extract numeric value
                     try:
                         # Extract number from text like "0.85" or "85%" or "Score: 0.85/1.0"
                         score_parts = score_text.replace("/1.0", "").replace("/1", "").replace("%", "").strip()
@@ -130,16 +167,20 @@ class EvaluationAgent(BaseSpecializedAgent):
                         # If percentage, convert to decimal
                         if score_value > 1.0:
                             score_value /= 100
-                        structured_output["score"] = round(score_value, 2)
+                        overall_score = round(score_value, 2)
                         # Ensure score is between 0 and 1
-                        if structured_output["score"] < 0:
-                            structured_output["score"] = 0.0
-                        elif structured_output["score"] > 1:
-                            structured_output["score"] = 1.0
+                        if overall_score < 0:
+                            overall_score = 0.0
+                        elif overall_score > 1:
+                            overall_score = 1.0
                         break
                     except ValueError:
-                        logger.warning(f"Could not parse score from text: {score_text}")
+                        logger.warning(f"Could not parse overall score from text: {score_text}")
                         continue
+            
+            # If overall score was found, use it
+            if overall_score is not None:
+                structured_output["score"] = overall_score
             
             # Process the output by sections
             for line in lines:
@@ -203,6 +244,16 @@ class EvaluationAgent(BaseSpecializedAgent):
             if not structured_output["areas_for_improvement"]:
                 structured_output["areas_for_improvement"] = ["Consider providing more detailed treatment rationale."]
             
+            # Create a formatted evaluation summary for display
+            strengths_text = "\n- " + "\n- ".join(structured_output["strengths"][:3]) if structured_output["strengths"] else ""
+            improvements_text = "\n- " + "\n- ".join(structured_output["areas_for_improvement"][:3]) if structured_output["areas_for_improvement"] else ""
+            
+            structured_output["evaluation_formatted"] = (
+                f"Overall Score: {structured_output['score']:.2f}\n\n"
+                f"Key Strengths:{strengths_text}\n\n"
+                f"Areas for Improvement:{improvements_text}"
+            )
+            
             return structured_output
             
         except Exception as e:
@@ -214,5 +265,6 @@ class EvaluationAgent(BaseSpecializedAgent):
                 "raw_output": llm_output,
                 "strengths": ["See raw output for identified strengths"],
                 "areas_for_improvement": ["See raw output for areas of improvement"],
+                "evaluation_formatted": "Overall Score: 0.75\n\nEvaluation completed with parsing limitations.",
                 "processing_error": str(e)
             } 

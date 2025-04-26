@@ -200,6 +200,27 @@ class PathologyAgent(BaseSpecializedAgent):
                 if not structured_output["therapeutic_implications"]:
                     structured_output["therapeutic_implications"] = ["Therapeutic implications not specified"]
             
+            # Add formatted string representation of molecular profile
+            molecular_profile = structured_output["molecular_profile"]
+            
+            # Format key mutations and immunotherapy markers
+            formatted_parts = []
+            if molecular_profile["key_mutations"]:
+                formatted_parts.append(f"Key Mutations: {molecular_profile['key_mutations']}")
+            if molecular_profile["immunotherapy_markers"]:
+                formatted_parts.append(f"Immunotherapy Markers: {molecular_profile['immunotherapy_markers']}")
+            
+            # Format other markers if present
+            other_markers = molecular_profile.get("other_markers", {})
+            if other_markers:
+                other_markers_text = ", ".join([f"{key}: {value}" for key, value in other_markers.items()])
+                formatted_parts.append(f"Other Markers: {other_markers_text}")
+            
+            # Combine all parts
+            structured_output["molecular_profile_formatted"] = ". ".join(formatted_parts)
+            if not structured_output["molecular_profile_formatted"]:
+                structured_output["molecular_profile_formatted"] = "No molecular profile data specified"
+            
             return structured_output
             
         except Exception as e:
@@ -214,5 +235,6 @@ class PathologyAgent(BaseSpecializedAgent):
                     "immunotherapy_markers": "See raw output",
                     "other_markers": {}
                 },
+                "molecular_profile_formatted": "Error parsing molecular profile information. See raw output.",
                 "processing_error": str(e)
             } 

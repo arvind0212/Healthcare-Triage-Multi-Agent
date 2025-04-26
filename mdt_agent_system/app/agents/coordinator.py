@@ -23,6 +23,31 @@ logger = get_logger(__name__)
 class AgentOutputPlaceholder(BaseModel):
     summary: str = "Default summary"
     details: Dict[str, Any] = {}
+    
+    def dict(self, *args, **kwargs):
+        """Override dict method to properly handle nested objects."""
+        result = {
+            "summary": self.summary,
+            "details": self._convert_to_serializable(self.details)
+        }
+        return result
+    
+    def _convert_to_serializable(self, obj):
+        """Convert objects to serializable format."""
+        if hasattr(obj, "dict") and callable(obj.dict):
+            return obj.dict()
+        elif isinstance(obj, dict):
+            return {k: self._convert_to_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_to_serializable(item) for item in obj]
+        elif hasattr(obj, "__dict__"):
+            return self._convert_to_serializable(obj.__dict__)
+        else:
+            # Try to get a string representation if all else fails
+            try:
+                return str(obj)
+            except:
+                return "Non-serializable object"
 
 # Context passed between agent steps
 class AgentContext(BaseModel):
@@ -40,6 +65,48 @@ class AgentContext(BaseModel):
 
     # Extra fields allowed for intermediate data
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    
+    def dict(self, *args, **kwargs):
+        """Override dict method to handle complex objects."""
+        result = {
+            "run_id": self.run_id,
+            # Exclude complex objects that don't need to be serialized
+            # "patient_case": self._convert_to_serializable(self.patient_case),
+            # "status_service": "StatusUpdateService instance"  # Skip service objects
+        }
+        
+        # Add agent outputs with proper serialization
+        if self.ehr_analysis:
+            result["ehr_analysis"] = self._convert_to_serializable(self.ehr_analysis)
+        if self.imaging_analysis:
+            result["imaging_analysis"] = self._convert_to_serializable(self.imaging_analysis)
+        if self.pathology_analysis:
+            result["pathology_analysis"] = self._convert_to_serializable(self.pathology_analysis)
+        if self.guideline_recommendations:
+            result["guideline_recommendations"] = self._convert_to_serializable(self.guideline_recommendations)
+        if self.specialist_assessment:
+            result["specialist_assessment"] = self._convert_to_serializable(self.specialist_assessment)
+        if self.evaluation:
+            result["evaluation"] = self._convert_to_serializable(self.evaluation)
+            
+        return result
+    
+    def _convert_to_serializable(self, obj):
+        """Convert objects to serializable format."""
+        if hasattr(obj, "dict") and callable(obj.dict):
+            return obj.dict()
+        elif isinstance(obj, dict):
+            return {k: self._convert_to_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_to_serializable(item) for item in obj]
+        elif hasattr(obj, "__dict__"):
+            return self._convert_to_serializable(obj.__dict__)
+        else:
+            # Try to get a string representation if all else fails
+            try:
+                return str(obj)
+            except:
+                return "Non-serializable object"
 
 # --- Agent Step Functions (Placeholders as Runnables) ---
 
@@ -458,6 +525,75 @@ async def run_mdt_simulation(
 
         # --- Aggregate Report ---
         # Ensure final_context fields are not None before accessing
+        
+        # Extract treatment options from specialist assessment and pathology analysis
+        treatment_options = []
+        
+        # Try to extract from specialist assessment first
+        if final_context.specialist_assessment and final_context.specialist_assessment.details:
+            specialist_details = final_context.specialist_assessment.details
+            
+            # Look for treatment-related sections
+            treatment_sections = ["treatment_options", "proposed_approach", "treatment_considerations", "recommendations"]
+            
+            for section in treatment_sections:
+                if section in specialist_details and specialist_details[section]:
+                    if isinstance(specialist_details[section], list):
+                        for item in specialist_details[section]:
+                            if isinstance(item, str):
+                                treatment_options.append({"option": item, "source": "Specialist Assessment"})
+                            elif isinstance(item, dict) and "option" in item:
+                                treatment_options.append(item)
+                    elif isinstance(specialist_details[section], str):
+                        treatment_options.append({"option": specialist_details[section], "source": "Specialist Assessment"})
+        
+        # If no treatments found yet, try pathology analysis
+        if not treatment_options and final_context.pathology_analysis and final_context.pathology_analysis.details:
+            pathology_details = final_context.pathology_analysis.details
+            
+            if "therapeutic_implications" in pathology_details and pathology_details["therapeutic_implications"]:
+                implications = pathology_details["therapeutic_implications"]
+                if isinstance(implications, list):
+                    for implication in implications:
+                        if isinstance(implication, str) and len(implication) > 10:  # Skip short strings
+                            treatment_options.append({"option": implication, "source": "Pathology Analysis"})
+        
+        # If we still don't have options, check guideline recommendations
+        if not treatment_options and final_context.guideline_recommendations:
+            for rec in final_context.guideline_recommendations:
+                if "recommendations" in rec and rec["recommendations"]:
+                    if isinstance(rec["recommendations"], list):
+                        for item in rec["recommendations"]:
+                            if isinstance(item, str) and len(item) > 10:
+                                treatment_options.append({"option": item, "source": "Guideline Recommendations"})
+                    elif isinstance(rec["recommendations"], str):
+                        treatment_options.append({"option": rec["recommendations"], "source": "Guideline Recommendations"})
+        
+        # If we still have no treatment options, use a more descriptive placeholder
+        if not treatment_options:
+            treatment_options = [{"option": "Treatment options should be determined through MDT discussion considering the patient's KRAS G12C mutation, high PD-L1 expression, and overall clinical status.", "source": "System Recommendation"}]
+        
+        # Get evaluation details with formatted output
+        evaluation_formatted = None
+        if final_context.evaluation:
+            if "evaluation_formatted" in final_context.evaluation:
+                evaluation_formatted = final_context.evaluation["evaluation_formatted"]
+            else:
+                # Create a basic formatted evaluation
+                score = final_context.evaluation.get("score", 0.0)
+                comments = final_context.evaluation.get("comments", "")
+                strengths = final_context.evaluation.get("strengths", [])
+                areas = final_context.evaluation.get("areas_for_improvement", [])
+                
+                strengths_text = "\n- " + "\n- ".join(strengths[:3]) if strengths else ""
+                improvements_text = "\n- " + "\n- ".join(areas[:3]) if areas else ""
+                
+                evaluation_formatted = (
+                    f"Overall Score: {score:.2f}\n\n"
+                    f"Key Strengths:{strengths_text}\n\n"
+                    f"Areas for Improvement:{improvements_text}"
+                )
+        
         final_report = MDTReport(
             patient_id=final_context.patient_case.patient_id,
             summary="MDT Simulation Complete (Runnable Workflow)",
@@ -466,11 +602,54 @@ async def run_mdt_simulation(
             pathology_analysis=final_context.pathology_analysis.dict() if final_context.pathology_analysis else {},
             guideline_recommendations=final_context.guideline_recommendations if final_context.guideline_recommendations else [],
             specialist_assessment=final_context.specialist_assessment.dict() if final_context.specialist_assessment else {},
-            treatment_options=[{"option": "Placeholder Treatment Option"}], # Still placeholder
+            treatment_options=treatment_options,
             evaluation_score=final_context.evaluation.get("score") if final_context.evaluation else None,
             evaluation_comments=final_context.evaluation.get("comments") if final_context.evaluation else None,
+            evaluation_formatted=evaluation_formatted,
             timestamp=datetime.utcnow(),
         )
+        
+        # Custom recursive function to ensure all nested objects are properly serialized
+        def ensure_serializable(obj):
+            """Recursively convert all objects to serializable types and use formatted fields."""
+            if hasattr(obj, "dict") and callable(obj.dict):
+                return ensure_serializable(obj.dict())
+            elif isinstance(obj, dict):
+                result = {}
+                for k, v in obj.items():
+                    # Handle special formatted fields
+                    if k == "disease_extent" and "disease_extent_formatted" in obj:
+                        # Use the formatted version directly
+                        result[k] = obj["disease_extent_formatted"]
+                    elif k == "staging" and "staging_formatted" in obj:
+                        # Use the formatted version directly
+                        result[k] = obj["staging_formatted"]
+                    elif k == "molecular_profile" and "molecular_profile_formatted" in obj:
+                        # Use the formatted version directly
+                        result[k] = obj["molecular_profile_formatted"]
+                    elif k == "evaluation" and "evaluation_formatted" in obj:
+                        # Use the formatted evaluation summary
+                        result[k] = obj["evaluation_formatted"]
+                    else:
+                        # Regular recursive serialization
+                        result[k] = ensure_serializable(v)
+                return result
+            elif isinstance(obj, list):
+                return [ensure_serializable(item) for item in obj]
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            elif hasattr(obj, "__dict__"):
+                return ensure_serializable(obj.__dict__)
+            else:
+                # If it's a primitive type or we can't process it further, return as is
+                return obj
+        
+        # Process the final report to ensure all objects are serializable
+        report_dict = final_report.dict() if hasattr(final_report, "dict") else final_report.__dict__
+        serialized_report = ensure_serializable(report_dict)
+        
+        # Convert serialized report back to an MDTReport object
+        final_report = MDTReport(**serialized_report)
         
         print("\n\n============ DIRECT CONSOLE OUTPUT OF FINAL REPORT ============")
         print("PATIENT ID:", final_context.patient_case.patient_id)

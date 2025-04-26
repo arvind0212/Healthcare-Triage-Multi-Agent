@@ -14,6 +14,7 @@ class MDTReport(BaseModel):
     treatment_options: List[Dict[str, Any]] = Field(..., description="Proposed treatment options")
     evaluation_score: Optional[float] = Field(None, description="Self-evaluation score of the report")
     evaluation_comments: Optional[str] = Field(None, description="Self-evaluation comments")
+    evaluation_formatted: Optional[str] = Field(None, description="Formatted evaluation summary with score and key points")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Report generation timestamp")
     
     class Config:
