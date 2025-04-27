@@ -285,8 +285,10 @@ section:hover {
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
     overflow: auto;
-    max-height: 500px;
+    max-height: 800px;
     border: 1px solid var(--border-color);
+    margin: 0 auto;
+    width: 100%;
 }
 
 /* Connection Status */
@@ -525,6 +527,89 @@ footer {
     text-align: center;
     font-size: 16px;
     fill: var(--primary-text);
+    background-color: transparent !important;
+    width: 100%;
+    min-height: 300px;
+}
+
+.mermaid svg {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 300px;
+    max-width: none !important;
+}
+
+/* Mermaid node styles */
+.mermaid .node rect,
+.mermaid .node circle,
+.mermaid .node ellipse,
+.mermaid .node polygon,
+.mermaid .node path {
+    stroke-width: 1px;
+}
+
+/* Ensure consistent node spacing */
+.mermaid .flowchart-link {
+    stroke: #999999 !important;
+    stroke-width: 1px !important;
+}
+
+.mermaid .marker {
+    fill: #999999 !important;
+    stroke: none !important;
+}
+
+/* Node states with !important to ensure styles are applied */
+.mermaid .node.default rect {
+    fill: #F9FAFB !important;
+    stroke: #D1D5DB !important;
+}
+
+.mermaid .node.inactive rect {
+    fill: #F3F4F6 !important;
+    stroke: #E5E7EB !important;
+}
+
+.mermaid .node.running rect {
+    fill: #3B82F6 !important;
+    stroke: #2563EB !important;
+}
+
+.mermaid .node.complete rect {
+    fill: #10B981 !important;
+    stroke: #059669 !important;
+}
+
+.mermaid .node.error rect {
+    fill: #EF4444 !important;
+    stroke: #DC2626 !important;
+}
+
+.mermaid .edgePath .path {
+    stroke: #999999 !important;
+    stroke-width: 1px;
+}
+
+.mermaid .arrowheadPath {
+    fill: #999999 !important;
+    stroke: none !important;
+}
+
+.mermaid .node text {
+    font-family: 'Inter', sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+.mermaid .node.running text,
+.mermaid .node.complete text,
+.mermaid .node.error text {
+    fill: #FFFFFF !important;
+}
+
+.mermaid .node.default text,
+.mermaid .node.inactive text {
+    fill: #4B5563 !important;
 }
 
 /* Animation for loading */
