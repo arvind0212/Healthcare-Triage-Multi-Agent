@@ -242,47 +242,97 @@ document.addEventListener('DOMContentLoaded', () => {
         reconnectAttempts = 0;
         
         // Create new EventSource - update URL to match backend
-        const sseUrl = `${apiBase}/stream/${runId}`;
+        const sseUrl = `${apiBase}/status/${runId}/stream`;
         console.log(`Connecting to SSE stream: ${sseUrl}`);
         
-        eventSource = new EventSource(sseUrl);
-        
-        // Use specific event listeners for each event type
-        eventSource.addEventListener('status_update', handleStatusUpdate);
-        eventSource.addEventListener('report', handleReportEvent);
-        eventSource.addEventListener('complete', handleCompleteEvent);
-        
-        // General message handler for any unlabeled events
-        eventSource.onmessage = function(event) {
-            console.log(`Generic SSE message received for ${runId}:`, event.data);
-            
-            try {
-                const data = JSON.parse(event.data);
-                
-                // Check if it's a report
-                if (data.status === 'REPORT' || data.type === 'report') {
-                    displayReport(data.data || data);
-                    return;
-                }
-                
-                // Otherwise treat as status update
-                updateWorkflowVisualization(data);
-                
-            } catch (error) {
-                console.error('Error parsing SSE message:', error);
+        // Add connection timeout
+        const connectionTimeout = setTimeout(() => {
+            console.error('SSE connection timeout');
+            updateConnectionStatus('error', 'Connection timeout');
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
             }
-        };
+        }, 10000); // 10 second timeout
         
-        // Connection established
-        eventSource.onopen = function() {
-            console.log(`SSE connection established for ${runId}`);
-            updateConnectionStatus('connected', 'Connected to simulation');
-        };
-        
-        // Handle errors
-        eventSource.onerror = function(event) {
-            handleSSEError(event, runId);
-        };
+        try {
+            eventSource = new EventSource(sseUrl);
+            console.log('EventSource created, adding event listeners...');
+            
+            // Use specific event listeners for each event type
+            eventSource.addEventListener('status_update', (event) => {
+                console.log('Status update event received:', event);
+                handleStatusUpdate(event);
+            });
+            
+            eventSource.addEventListener('report', (event) => {
+                console.log('Report event received:', event);
+                handleReportEvent(event);
+            });
+            
+            eventSource.addEventListener('complete', (event) => {
+                console.log('Complete event received:', event);
+                handleCompleteEvent(event);
+            });
+            
+            // General message handler for any unlabeled events
+            eventSource.onmessage = function(event) {
+                console.log(`Generic SSE message received for ${runId}:`, event);
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Parsed generic message data:', data);
+                    
+                    // Check if it's a report
+                    if (data.details && data.details.report_data) {
+                        console.log('Found report data in generic message');
+                        displayReport(data.details.report_data);
+                        return;
+                    }
+                    
+                    // Check if it's a status update with report
+                    if (data.status === 'DONE' && data.details && data.details.is_report) {
+                        console.log('Found report flag in status update');
+                        displayReport(data.details.report_data);
+                        return;
+                    }
+                    
+                    // Otherwise treat as status update
+                    updateWorkflowVisualization(data);
+                    
+                } catch (error) {
+                    console.error('Error parsing SSE message:', error);
+                }
+            };
+            
+            // Connection established
+            eventSource.onopen = function() {
+                console.log(`SSE connection established for ${runId}`);
+                clearTimeout(connectionTimeout);
+                updateConnectionStatus('connected', 'Connected to simulation');
+            };
+            
+            // Handle errors
+            eventSource.onerror = function(event) {
+                console.error('SSE Error event:', event);
+                // Check if the connection was never established
+                if (eventSource.readyState === EventSource.CONNECTING) {
+                    console.error('Initial connection failed');
+                    clearTimeout(connectionTimeout);
+                    updateConnectionStatus('error', 'Failed to connect');
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                } else {
+                    handleSSEError(event, runId);
+                }
+            };
+        } catch (error) {
+            console.error('Error creating EventSource:', error);
+            clearTimeout(connectionTimeout);
+            updateConnectionStatus('error', 'Failed to create connection');
+        }
     }
     
     // Handle specific status update events
@@ -291,6 +341,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = JSON.parse(event.data);
             console.log('Parsed status update data:', data);
+            
+            // Check if this is a report status update
+            if (data.status === 'DONE' && data.details && data.details.report_data) {
+                console.log('Found report data in status update:', data.details.report_data);
+                displayReport(data.details.report_data);
+                return;
+            }
             
             // Check different possible data formats
             if (data.agent_id && data.status) {

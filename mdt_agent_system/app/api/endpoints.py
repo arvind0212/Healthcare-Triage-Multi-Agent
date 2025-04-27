@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, Request
+from fastapi import APIRouter, UploadFile, File, Depends, Request, Header
 from fastapi import HTTPException, BackgroundTasks, status
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
@@ -8,7 +8,7 @@ import json
 import logging
 import asyncio # Added for sleep in SSE stream
 import os # For log file path
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 from mdt_agent_system.app.core.schemas.common import PatientCase, StatusUpdate
@@ -138,227 +138,60 @@ async def simulate_mdt(
     return {"run_id": run_id, "message": "Simulation request accepted and is being processed."}
 
 
-async def sse_generator(run_id: str, request: Request, status_service: StatusUpdateService):
-    """Async generator for sending StatusUpdates via SSE, supports reconnection."""
-    # Read Last-Event-ID header sent by the client
-    last_event_id = request.headers.get("last-event-id")
-    logger.info(f"SSE connection request for run_id: {run_id}. Last-Event-ID: {last_event_id}")
-
-    # Use a queue to decouple subscription from sending
-    queue = asyncio.Queue()
-    # Use an event to signal when the subscriber task has finished
-    subscriber_finished_event = asyncio.Event()
-
-    async def _subscribe_and_queue():
-        """Task to subscribe to status updates and put them in the queue."""
-        try:
-            # Subscribe using the modified service method, passing last_event_id
-            async for update in status_service.subscribe(run_id, last_event_id):
-                if await request.is_disconnected():
-                    logger.info(f"SSE client disconnected during subscription for run_id: {run_id}. Stopping.")
-                    break
-                await queue.put(update)
-        except asyncio.CancelledError:
-            logger.info(f"SSE subscription task cancelled for run_id: {run_id}")
-        except Exception as e:
-            logger.error(f"Error in SSE subscription task for run_id {run_id}: {e}", exc_info=True)
-            # Optionally put an error indicator in the queue or handle differently
-            await queue.put(None) # Signal error/end
-        finally:
-            logger.info(f"SSE subscription ended for run_id: {run_id}")
-            await queue.put(None) # Signal the consumer loop to stop
-            subscriber_finished_event.set() # Signal that the subscriber task is done
-
-    subscription_task = asyncio.create_task(_subscribe_and_queue())
-    ping_interval = 15 # Send a ping every 15 seconds
-
-    try:
-        while True:
-            if await request.is_disconnected():
-                logger.info(f"SSE client disconnected in main generator loop for run_id: {run_id}. Breaking loop.")
-                break
-
-            try:
-                # Wait for an update from the queue or timeout for ping
-                update = await asyncio.wait_for(queue.get(), timeout=ping_interval)
-
-                if update is None: # End of stream signal from subscriber task
-                    logger.info(f"Received None signal in SSE generator for run_id: {run_id}. Ending stream.")
-                    break
-
-                if await request.is_disconnected():
-                    logger.info(f"SSE client disconnected before sending event_id {update.event_id} for run_id: {run_id}. Breaking loop.")
-                    break
-
-                # Use model_dump_json for Pydantic v2
-                event_data = update.model_dump_json()
-                
-                # DETAILED STATUS UPDATE LOGGING
-                print(f"\n===> SSE STATUS UPDATE: event_id={update.event_id}, status={update.status}, agent_id={update.agent_id}")
-                print(f"===> MESSAGE: {update.message}")
-                
-                # For all statuses, inspect details
-                if update.details:
-                    print(f"===> DETAILS: {update.details}")
-                    if isinstance(update.details, dict) and "report_data" in update.details:
-                        print("===> REPORT DATA FOUND IN DETAILS")
-                        if isinstance(update.details["report_data"], dict):
-                            print(f"===> REPORT KEYS: {update.details['report_data'].keys()}")
-                
-                # Check if this is a report status update (special handling)
-                if update.status == "REPORT" and "report_data" in update.details:
-                    # For report events, send the report_data directly with event type "report"
-                    print(f"===> SSE: FOUND REPORT STATUS with event_id: {update.event_id}")
-                    try:
-                        print(f"===> SSE: REPORT DETAILS TYPE: {type(update.details)}")
-                        print(f"===> SSE: REPORT_DATA TYPE: {type(update.details.get('report_data', 'MISSING'))}")
-                        
-                        # Make sure the report_data is valid
-                        report_data = update.details.get("report_data")
-                        if report_data is None:
-                            print("===> SSE: WARNING - EMPTY REPORT DATA")
-                            report_data = {
-                                "error": "Empty report data received",
-                                "timestamp": str(datetime.utcnow())
-                            }
-                        
-                        # Attempt to serialize
-                        try:
-                            report_json = json.dumps(report_data)
-                        except Exception as serialize_error:
-                            print(f"===> SSE: ERROR SERIALIZING REPORT: {serialize_error}")
-                            # Try fallback serialization
-                            report_json = json.dumps({
-                                "error": f"Failed to serialize report: {str(serialize_error)}",
-                                "timestamp": str(datetime.utcnow())
-                            })
-                            
-                        print(f"===> SSE: REPORT DATA SIZE: {len(report_json)} bytes")
-                        print(f"===> SSE: REPORT DATA PREVIEW: {report_json[:100]}...")
-                        
-                        # Break large reports into multiple smaller chunks if needed
-                        if len(report_json) > 1000000:  # If larger than ~1MB
-                            print(f"===> SSE: LARGE REPORT DETECTED - BREAKING INTO CHUNKS")
-                            # Send metadata first
-                            metadata = {
-                                "type": "report_metadata",
-                                "size": len(report_json),
-                                "chunks": (len(report_json) // 500000) + 1
-                            }
-                            yield ServerSentEvent(
-                                data=json.dumps(metadata),
-                                event="report_metadata",
-                                id=f"{update.event_id}_meta"
-                            )
-                            
-                            # Break into ~500KB chunks
-                            chunk_size = 500000
-                            for i in range(0, len(report_json), chunk_size):
-                                chunk = report_json[i:i+chunk_size]
-                                chunk_metadata = {
-                                    "chunk_index": i // chunk_size,
-                                    "total_chunks": (len(report_json) // chunk_size) + 1,
-                                    "data": chunk
-                                }
-                                print(f"===> SSE: SENDING CHUNK {i // chunk_size + 1} of {(len(report_json) // chunk_size) + 1}")
-                                
-                                # Add a small delay between chunks to avoid overwhelming the connection
-                                await asyncio.sleep(0.2)
-                                
-                                # Check connection before sending each chunk
-                                if await request.is_disconnected():
-                                    print(f"===> SSE: CLIENT DISCONNECTED DURING CHUNKED REPORT TRANSMISSION")
-                                    break
-                                    
-                                yield ServerSentEvent(
-                                    data=json.dumps(chunk_metadata),
-                                    event="report_chunk",
-                                    id=f"{update.event_id}_{i // chunk_size}"
-                                )
-                        else:
-                            # Regular report handling for smaller reports
-                            print("===> SSE: SENDING REGULAR REPORT EVENT")
-                            sse_event = ServerSentEvent(
-                                data=report_json,
-                                event="report",
-                                id=str(update.event_id)
-                            )
-                            logger.info(f"Emitting report event for run_id: {run_id}")
-                            yield sse_event
-                    except Exception as report_error:
-                        print(f"===> SSE: ERROR PROCESSING REPORT: {report_error}")
-                        logger.error(f"Error processing report for SSE: {report_error}", exc_info=True)
-                        # Send an error event to notify the client
-                        error_data = {
-                            "error": f"Failed to process report data: {str(report_error)}",
-                            "timestamp": str(datetime.utcnow())
-                        }
-                        yield ServerSentEvent(
-                            data=json.dumps(error_data),
-                            event="error",
-                            id=str(update.event_id)
-                        )
-                        # Also try to send a minimal report as fallback
-                        minimal_report = {
-                            "patient_id": "error_recovery",
-                            "summary": "Error processing report data. Check logs.",
-                            "timestamp": str(datetime.utcnow()),
-                            "error": str(report_error)
-                        }
-                        yield ServerSentEvent(
-                            data=json.dumps(minimal_report),
-                            event="report",
-                            id=f"{update.event_id}_recovery"
-                        )
-                else:
-                    # Regular status update
-                    sse_event = ServerSentEvent(
-                        data=event_data,
-                        event="status_update",
-                        id=str(update.event_id) # Set the ID for reconnection
-                    )
-                
-                yield sse_event
-                queue.task_done() # Mark item as processed
-
-            except asyncio.TimeoutError:
-                # Send a keep-alive ping
-                if await request.is_disconnected():
-                    logger.info(f"SSE client disconnected during ping check for run_id: {run_id}. Breaking loop.")
-                    break
-                yield ServerSentEvent(data="ping", event="ping")
-                logger.debug(f"Sent keep-alive ping for run_id: {run_id}")
-
-            except Exception as e:
-                logger.error(f"Error in SSE generator loop for run_id {run_id}: {e}", exc_info=True)
-                if not await request.is_disconnected():
-                    yield ServerSentEvent(data=json.dumps({"error": "Internal server error during stream."}), event="error")
-                break # Stop streaming on unexpected error
-
-    except asyncio.CancelledError:
-        logger.info(f"SSE generator task cancelled by server/client for run_id: {run_id}")
-    finally:
-        logger.info(f"Cleaning up SSE generator for run_id: {run_id}")
-        # Ensure the subscription task is cancelled if the generator exits prematurely
-        if not subscription_task.done():
-            logger.info(f"Cancelling subscription task for run_id: {run_id} from generator finally block.")
-            subscription_task.cancel()
-            # Wait for the subscriber task to finish its cleanup
-            await subscriber_finished_event.wait()
-
-
-@router.get("/stream/{run_id}", tags=["Simulation"], response_class=EventSourceResponse)
+@router.get("/status/{run_id}/stream")
 async def stream_status(
     run_id: str,
-    request: Request, # Request is needed to check for disconnection
+    request: Request,
+    last_event_id: Optional[str] = Header(None),
     status_service: StatusUpdateService = Depends(get_status_service)
-):
-    """
-    Endpoint to stream simulation status updates using Server-Sent Events (SSE).
-    """
-    logger.info(f"SSE connection established for run_id: {run_id}")
-    # EventSourceResponse handles the generator and headers
-    return EventSourceResponse(sse_generator(run_id, request, status_service))
+) -> EventSourceResponse:
+    """Stream status updates for a specific run using Server-Sent Events (SSE)."""
+    logger.info(f"Starting SSE stream for run_id {run_id}, last_event_id: {last_event_id}")
+    logger.debug(f"Request headers: {dict(request.headers)}")
+    
+    # Log client info
+    client_host = request.client.host if request.client else "unknown"
+    logger.info(f"Client connected from: {client_host}")
+
+    async def event_generator():
+        try:
+            logger.debug(f"Starting event generator for run_id: {run_id}")
+            async for update in status_service.subscribe(run_id, last_event_id):
+                logger.debug(f"Generated event for run_id {run_id}: {update}")
+                event_data = {
+                    "agent_id": update.agent_id,
+                    "status": update.status,
+                    "message": update.message,
+                    "timestamp": update.timestamp.isoformat(),
+                    "details": update.details,
+                    "run_id": update.run_id,
+                    "event_id": update.event_id
+                }
+                yield {
+                    "event": "status_update",
+                    "id": str(update.event_id),
+                    "data": json.dumps(event_data)
+                }
+        except asyncio.CancelledError:
+            logger.info(f"SSE connection cancelled for run_id: {run_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Error in SSE stream for run_id {run_id}: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "error": str(e),
+                    "run_id": run_id
+                })
+            }
+        finally:
+            logger.info(f"SSE connection closed for run_id: {run_id}")
+
+    return EventSourceResponse(
+        event_generator(),
+        ping=15,  # Send ping every 15 seconds
+        ping_message_factory=lambda: {"event": "ping", "data": ""}
+    )
 
 
 # --- Observability Endpoints ---
