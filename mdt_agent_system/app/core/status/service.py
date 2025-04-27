@@ -114,7 +114,6 @@ class StatusUpdateService:
                         print("===> Converted using .__dict__ attribute")
                     else:
                         # Last resort: convert to string and back to dict
-                        # Use the globally imported json module
                         report_data = json.loads(json.dumps(report_data, default=str))
                         print("===> Converted using json dumps/loads")
                 except Exception as conv_error:
@@ -128,55 +127,24 @@ class StatusUpdateService:
                         "original_type": str(type(report_data))
                     }
             
-            # Basic validation to ensure the report isn't too large
-            report_json = json.dumps(report_data)
-            report_size = len(report_json)
-            print(f"===> REPORT SIZE: {report_size} bytes")
+            # Convert any datetime objects to strings in the report data
+            def convert_datetime(obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                return obj
             
-            if report_size > 10000000:  # 10MB size limit
-                print(f"===> WARNING: Report is very large ({report_size} bytes), may cause streaming issues")
-                # Simplify report if too large
-                try:
-                    # Create a simplified version with just essential data
-                    simplified_report = {
-                        "patient_id": report_data.get("patient_id", "Unknown"),
-                        "summary": report_data.get("summary", "Report summary not available"),
-                        "timestamp": report_data.get("timestamp", str(datetime.utcnow())),
-                        "note": "Full report data was too large to stream - simplified version provided"
-                    }
-                    
-                    # Keep essential sections with limited data
-                    for section in ["ehr_analysis", "imaging_analysis", "pathology_analysis", 
-                                    "specialist_assessment"]:
-                        if section in report_data and isinstance(report_data[section], dict):
-                            # Just keep the summary from each section
-                            simplified_report[section] = {
-                                "summary": report_data[section].get("summary", f"{section} summary not available")
-                            }
-                    
-                    # Keep a few recommendations if present
-                    if "guideline_recommendations" in report_data and isinstance(report_data["guideline_recommendations"], list):
-                        simplified_report["guideline_recommendations"] = report_data["guideline_recommendations"][:3]
-                    
-                    # Keep a few treatment options if present
-                    if "treatment_options" in report_data and isinstance(report_data["treatment_options"], list):
-                        simplified_report["treatment_options"] = report_data["treatment_options"][:3]
-                    
-                    report_data = simplified_report
-                    print(f"===> REPORT SIMPLIFIED to reduce size")
-                except Exception as simplify_error:
-                    print(f"===> FAILED TO SIMPLIFY REPORT: {simplify_error}")
+            report_data = json.loads(json.dumps(report_data, default=convert_datetime))
             
-            # Create a special status update for the report
+            # Create a special status update for the report using a valid status
             event_id = self._get_next_event_id(run_id)
             update = StatusUpdate(
                 run_id=run_id,
                 event_id=event_id,
                 agent_id="Coordinator",
-                status="REPORT",
+                status="DONE",  # Using valid status
                 message="MDT Report Generated",
                 timestamp=datetime.utcnow(),
-                details={"report_data": report_data}
+                details={"report_data": report_data, "is_report": True}  # Flag to identify this as a report
             )
             
             print(f"===> CREATED REPORT STATUS UPDATE with event_id: {update.event_id}")
@@ -186,18 +154,14 @@ class StatusUpdateService:
                 self.active_runs[run_id] = []
             self.active_runs[run_id].append(update)
             
-            # We might not want to persist reports in the status updates due to size
-            # but we'll keep it for now for consistency
+            # Persist updates
             self._persist_run_updates(run_id)
             
-            # Notify live subscribers with this special update
+            # Notify live subscribers
             if run_id in self.subscribers:
                 print(f"===> RUN_ID {run_id} HAS {len(self.subscribers[run_id])} SUBSCRIBERS")
-                # Create tasks to put items in queues concurrently
                 tasks = []
                 for queue in self.subscribers[run_id]:
-                    # This is the key change - we're directly creating a custom event object
-                    # with the 'report' event type that the frontend expects
                     tasks.append(queue.put(update))
                 if tasks:
                     await asyncio.gather(*tasks)
@@ -213,10 +177,9 @@ class StatusUpdateService:
             print(f"===> ERROR IN EMIT_REPORT: {e}")
             logger.error(f"Failed to emit report for run_id {run_id}: {e}", exc_info=True)
             
-            # Try emergency fallback
+            # Try emergency fallback with valid status
             try:
                 print("===> TRYING EMERGENCY REPORT FALLBACK")
-                # Create an extremely simple report to bypass any serialization issues
                 minimal_report = {
                     "patient_id": "emergency",
                     "summary": "Error generating proper report. Check logs.",
@@ -224,19 +187,17 @@ class StatusUpdateService:
                     "error": str(e)
                 }
                 
-                # Create status update with minimal report
                 fallback_event_id = self._get_next_event_id(run_id)
                 fallback_update = StatusUpdate(
                     run_id=run_id,
                     event_id=fallback_event_id,
                     agent_id="System",
-                    status="REPORT",
+                    status="DONE",  # Using valid status
                     message="Emergency Report Fallback",
                     timestamp=datetime.utcnow(),
-                    details={"report_data": minimal_report}
+                    details={"report_data": minimal_report, "is_report": True}
                 )
                 
-                # Notify subscribers directly
                 if run_id in self.subscribers:
                     for queue in self.subscribers[run_id]:
                         await queue.put(fallback_update)
@@ -287,39 +248,42 @@ class StatusUpdateService:
 
         queue: asyncio.Queue[StatusUpdate] = asyncio.Queue()
         self.subscribers[run_id].append(queue)
-        logger.info(f"New subscriber added for run_id: {run_id}. Total: {len(self.subscribers[run_id])}")
+        logger.info(f"New subscriber added for run_id: {run_id}. Total subscribers: {len(self.subscribers[run_id])}")
 
         try:
-            # Send historical updates missed by the client
-            missed_updates = self.get_run_updates(run_id, last_event_id)
-            if missed_updates:
-                logger.info(f"Sending {len(missed_updates)} missed updates to subscriber for run_id: {run_id} (after event_id {last_event_id})")
-                for update in missed_updates:
-                    await queue.put(update)
-            else:
-                 logger.info(f"No missed updates for subscriber run_id: {run_id} (after event_id {last_event_id})")
+            # Send historical updates if requested
+            if last_event_id is not None:
+                try:
+                    last_id = int(last_event_id)
+                    missed_updates = [update for update in self.active_runs.get(run_id, []) if update.event_id > last_id]
+                    for update in missed_updates:
+                        await queue.put(update)
+                except ValueError:
+                    logger.warning(f"Invalid last_event_id format: {last_event_id}")
 
-            # Yield updates from the queue (both historical and live)
+            # Yield updates from the queue
             while True:
-                update = await queue.get()
-                yield update
-                queue.task_done() # Mark task as done for queue management
-        except asyncio.CancelledError:
-             logger.info(f"Subscription cancelled for run_id: {run_id}")
-             raise # Re-raise CancelledError to ensure cleanup
+                try:
+                    update = await queue.get()
+                    yield update
+                    queue.task_done()
+                except asyncio.CancelledError:
+                    logger.info(f"Subscription cancelled for run_id: {run_id}")
+                    break
+                except Exception as e:
+                    logger.error(f"Error processing update for run_id {run_id}: {e}")
+                    break
+
         finally:
             # Clean up subscription
-            logger.info(f"Removing subscriber for run_id: {run_id}")
             if run_id in self.subscribers:
-                 try:
+                try:
                     self.subscribers[run_id].remove(queue)
                     if not self.subscribers[run_id]:
                         del self.subscribers[run_id]
-                        logger.info(f"Last subscriber removed for run_id: {run_id}. Removed run from subscribers dict.")
-                 except ValueError:
-                     logger.warning(f"Queue already removed for subscriber of run_id: {run_id}. This might happen during concurrent cleanup.")
-            else:
-                logger.warning(f"Run_id {run_id} not found in subscribers during cleanup. Might have been cleared already.")
+                    logger.info(f"Subscriber removed for run_id: {run_id}. Remaining subscribers: {len(self.subscribers.get(run_id, []))}")
+                except ValueError:
+                    pass  # Queue might have been removed already
 
     async def _notify_subscribers(self, update: StatusUpdate):
         """Notify live subscribers of a new status update."""
