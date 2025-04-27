@@ -1,3 +1,10 @@
 Metadata-Version: 2.4
 Name: mdt-agent-system
 Version: 0.1.0
+Summary: Multi-Agent System for Medical Decision Support
+Requires-Python: >=3.8
+Requires-Dist: langchain>=0.1.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pytest>=7.0.0
+Requires-Dist: pytest-asyncio>=0.21.0
+Requires-Dist: pytest-cov>=4.0.0

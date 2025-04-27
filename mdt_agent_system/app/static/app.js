@@ -740,18 +740,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const markdownContent = getMarkdownContent(reportData);
             
             if (markdownContent) {
-                console.log("Found markdown content to display");
+                console.log("Found markdown content to display:", markdownContent.substring(0, 100) + "...");
                 
                 // Check if the content is already in HTML format
                 if (markdownContent.startsWith('<') && markdownContent.includes('</')) {
                     markdownSummary.innerHTML = markdownContent;
                 } else {
-                    markdownSummary.innerHTML = renderMarkdown(markdownContent);
+                    const renderedContent = renderMarkdown(markdownContent);
+                    console.log("Rendered markdown content:", renderedContent.substring(0, 100) + "...");
+                    markdownSummary.innerHTML = renderedContent;
                 }
             } else {
                 // If no suitable content found, create a basic summary
                 console.log("No suitable markdown content found, creating basic summary");
-                markdownSummary.innerHTML = renderMarkdown(`# Report for ${patientId}\n\nNo summary available.`);
+                const basicSummary = generateSummaryFromReport(reportData);
+                console.log("Generated basic summary:", basicSummary.substring(0, 100) + "...");
+                markdownSummary.innerHTML = renderMarkdown(basicSummary);
             }
             
             // Create the agent detail sections
@@ -931,28 +935,40 @@ document.addEventListener('DOMContentLoaded', () => {
             const content = document.createElement('div');
             content.className = 'agent-content';
             
-            // Convert to markdown
+            // Convert to markdown - prioritize markdown_content
             let markdown = '';
             
-            if (typeof agentData === 'string') {
+            if (typeof agentData === 'object' && agentData.markdown_content) {
+                // If we have markdown_content, use it directly
+                markdown = agentData.markdown_content;
+            } else if (typeof agentData === 'string') {
                 markdown = agentData;
             } else if (typeof agentData === 'object') {
-                if (Array.isArray(agentData)) {
-                    // Handle array data
-                    markdown = `# ${agentInfo.title}\n\n`;
-                    agentData.forEach((item, index) => {
-                        markdown += `## Item ${index + 1}\n\n`;
-                        if (typeof item === 'object') {
-                            Object.keys(item).forEach(key => {
-                                markdown += `### ${formatTitle(key)}\n\n${formatValue(item[key])}\n\n`;
-                            });
-                        } else {
-                            markdown += `${item}\n\n`;
-                        }
-                    });
-                } else {
-                    // Handle object data
-                    markdown = objectToMarkdown(agentData, agentInfo.title);
+                // Skip the 'markdown_content', 'metadata', and 'legacy_output' fields when creating object markdown
+                const processedData = {};
+                for (const key in agentData) {
+                    if (!['markdown_content', 'metadata', 'legacy_output'].includes(key)) {
+                        processedData[key] = agentData[key];
+                    }
+                }
+                
+                if (Object.keys(processedData).length > 0) {
+                    if (Array.isArray(processedData)) {
+                        // Handle array data
+                        markdown = `# ${agentInfo.title}\n\n`;
+                        processedData.forEach((item, index) => {
+                            if (typeof item === 'object') {
+                                Object.keys(item).forEach(key => {
+                                    markdown += `### ${formatTitle(key)}\n\n${formatValue(item[key])}\n\n`;
+                                });
+                            } else {
+                                markdown += `${item}\n\n`;
+                            }
+                        });
+                    } else {
+                        // Handle object data
+                        markdown = objectToMarkdown(processedData, agentInfo.title);
+                    }
                 }
             }
             
@@ -1444,28 +1460,40 @@ document.addEventListener('DOMContentLoaded', () => {
     function getMarkdownContent(data) {
         // Try to get content from multiple possible locations
         if (data.markdown_summary) {
+            console.log("Found markdown_summary:", data.markdown_summary);
             return data.markdown_summary;
         } 
         
+        // Look for summary in the summary field
+        if (data.summary && typeof data.summary === 'object' && data.summary.markdown_content) {
+            console.log("Found summary.markdown_content:", data.summary.markdown_content);
+            return data.summary.markdown_content;
+        }
+        
         // Look for summary agent output in specific fields
         if (data.summary_agent && data.summary_agent.output) {
+            console.log("Found summary_agent.output:", data.summary_agent.output);
             return data.summary_agent.output;
         }
         
         // Check if there's a SummaryAgent section in the data
         for (const key in data) {
             if (key.toLowerCase().includes('summary') && typeof data[key] === 'object') {
-                if (data[key].markdown || data[key].text || data[key].content) {
-                    return data[key].markdown || data[key].text || data[key].content;
+                if (data[key].markdown_content || data[key].markdown || data[key].text || data[key].content) {
+                    const content = data[key].markdown_content || data[key].markdown || data[key].text || data[key].content;
+                    console.log("Found summary content in key:", key, content);
+                    return content;
                 }
             }
         }
         
         // Fall back to regular summary if nothing else is found
         if (data.summary && typeof data.summary === 'string') {
+            console.log("Falling back to summary string:", data.summary);
             return data.summary;
         }
         
+        console.log("No suitable markdown content found");
         return null;
     }
 });

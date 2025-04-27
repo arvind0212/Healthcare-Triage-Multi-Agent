@@ -1,7 +1,7 @@
 import logging
 import asyncio # Added for simulating work
 from datetime import datetime
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 import traceback  # Add traceback import
 
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, RunnableConfig
@@ -21,16 +21,49 @@ logger = get_logger(__name__)
 
 # Placeholder for Agent Outputs
 class AgentOutputPlaceholder(BaseModel):
+    """Enhanced placeholder for agent outputs that handles both old and new formats."""
     summary: str = "Default summary"
     details: Dict[str, Any] = {}
+    markdown_content: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
     
     def dict(self, *args, **kwargs):
-        """Override dict method to properly handle nested objects."""
+        """Override dict method to properly handle nested objects and new format."""
         result = {
             "summary": self.summary,
             "details": self._convert_to_serializable(self.details)
         }
+        
+        # Include new format fields if available
+        if self.markdown_content is not None:
+            result["markdown_content"] = self.markdown_content
+        if self.metadata is not None:
+            result["metadata"] = self._convert_to_serializable(self.metadata)
+            
         return result
+    
+    @classmethod
+    def from_agent_output(cls, output: Any) -> 'AgentOutputPlaceholder':
+        """Create AgentOutputPlaceholder from various agent output formats."""
+        if isinstance(output, dict):
+            # Handle new format (AgentOutput)
+            if "markdown_content" in output and "metadata" in output:
+                return cls(
+                    summary=output.get("summary", "Analysis completed"),
+                    details=output,
+                    markdown_content=output["markdown_content"],
+                    metadata=output["metadata"]
+                )
+            # Handle legacy format
+            return cls(
+                summary=output.get("summary", "Analysis completed"),
+                details=output
+            )
+        # Handle string or other formats
+        return cls(
+            summary=str(output) if output else "Analysis completed",
+            details={"raw_output": str(output) if output else "No details available"}
+        )
     
     def _convert_to_serializable(self, obj):
         """Convert objects to serializable format."""
@@ -43,7 +76,6 @@ class AgentOutputPlaceholder(BaseModel):
         elif hasattr(obj, "__dict__"):
             return self._convert_to_serializable(obj.__dict__)
         else:
-            # Try to get a string representation if all else fails
             try:
                 return str(obj)
             except:
@@ -58,7 +90,7 @@ class AgentContext(BaseModel):
     ehr_analysis: Optional[AgentOutputPlaceholder] = None
     imaging_analysis: Optional[AgentOutputPlaceholder] = None
     pathology_analysis: Optional[AgentOutputPlaceholder] = None
-    guideline_recommendations: Optional[List[Dict[str, Any]]] = None
+    guideline_recommendations: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None
     specialist_assessment: Optional[AgentOutputPlaceholder] = None
     evaluation: Optional[Dict[str, Any]] = None
     summary: Optional[Dict[str, Any]] = None
@@ -133,11 +165,8 @@ async def _run_ehr_agent_step(context: AgentContext) -> AgentContext:
     # Process with the EHR Agent
     result = await ehr_agent.process(context.patient_case, {})
     
-    # Create an AgentOutputPlaceholder from the result
-    context.ehr_analysis = AgentOutputPlaceholder(
-        summary=result.get("summary", "EHR Analysis Complete"),
-        details=result
-    )
+    # Convert to expected output format using enhanced handler
+    context.ehr_analysis = AgentOutputPlaceholder.from_agent_output(result)
     
     await context.status_service.emit_status_update(
         run_id=context.run_id,
@@ -178,11 +207,8 @@ async def _run_imaging_agent_step(context: AgentContext) -> AgentContext:
     # Process with the actual agent
     result = await agent.process(context.patient_case, agent_context)
     
-    # Convert to expected output format
-    context.imaging_analysis = AgentOutputPlaceholder(
-        summary=result.get("summary", "Imaging Analysis Completed"),
-        details=result
-    )
+    # Convert to expected output format using enhanced handler
+    context.imaging_analysis = AgentOutputPlaceholder.from_agent_output(result)
     
     await context.status_service.emit_status_update(
         run_id=context.run_id,
@@ -225,11 +251,8 @@ async def _run_pathology_agent_step(context: AgentContext) -> AgentContext:
     # Process with the actual agent
     result = await agent.process(context.patient_case, agent_context)
     
-    # Convert to expected output format
-    context.pathology_analysis = AgentOutputPlaceholder(
-        summary=result.get("summary", "Pathology Analysis Completed"),
-        details=result
-    )
+    # Convert to expected output format using enhanced handler
+    context.pathology_analysis = AgentOutputPlaceholder.from_agent_output(result)
     
     await context.status_service.emit_status_update(
         run_id=context.run_id,
@@ -274,7 +297,7 @@ async def _run_guideline_agent_step(context: AgentContext) -> AgentContext:
     # Process with the actual agent
     result = await agent.process(context.patient_case, agent_context)
     
-    # For guidelines, the result is already a list
+    # For guidelines, store the recommendations directly
     context.guideline_recommendations = result
     
     await context.status_service.emit_status_update(
@@ -322,11 +345,8 @@ async def _run_specialist_agent_step(context: AgentContext) -> AgentContext:
     # Process with the actual agent
     result = await agent.process(context.patient_case, agent_context)
     
-    # Convert to expected output format
-    context.specialist_assessment = AgentOutputPlaceholder(
-        summary=result.get("overall_assessment", "Specialist Assessment Completed"),
-        details=result
-    )
+    # Convert to expected output format using enhanced handler
+    context.specialist_assessment = AgentOutputPlaceholder.from_agent_output(result)
     
     await context.status_service.emit_status_update(
         run_id=context.run_id,
@@ -375,8 +395,14 @@ async def _run_evaluation_step(context: AgentContext) -> AgentContext:
     # Process with the actual agent
     result = await agent.process(context.patient_case, agent_context)
     
-    # Store result directly in context.evaluation
-    context.evaluation = result
+    # Convert to expected output format using enhanced handler
+    evaluation_output = AgentOutputPlaceholder.from_agent_output(result)
+    # Store both the raw evaluation and the formatted output
+    context.evaluation = {
+        **result,  # Keep raw result for backward compatibility
+        "evaluation_formatted": evaluation_output.markdown_content if evaluation_output.markdown_content else None,
+        "metadata": evaluation_output.metadata if evaluation_output.metadata else {}
+    }
     
     await context.status_service.emit_status_update(
         run_id=context.run_id,
@@ -427,8 +453,15 @@ async def _run_summary_step(context: AgentContext) -> AgentContext:
     # Process with the actual agent
     result = await agent.process(context.patient_case, agent_context)
     
-    # Store result directly in context.summary
-    context.summary = result
+    # Convert to expected output format using enhanced handler
+    summary_output = AgentOutputPlaceholder.from_agent_output(result)
+    # Store both the raw summary and the formatted output
+    context.summary = {
+        **result,  # Keep raw result for backward compatibility
+        "summary": summary_output.summary,
+        "markdown_content": summary_output.markdown_content if summary_output.markdown_content else None,
+        "metadata": summary_output.metadata if summary_output.metadata else {}
+    }
     
     await context.status_service.emit_status_update(
         run_id=context.run_id,
@@ -597,6 +630,9 @@ async def run_mdt_simulation(
         # Extract treatment options from specialist assessment and pathology analysis
         treatment_options = []
         
+        # Initialize guideline_recommendations outside the if block
+        guideline_recommendations = []
+        
         # Try to extract from specialist assessment first
         if final_context.specialist_assessment and final_context.specialist_assessment.details:
             specialist_details = final_context.specialist_assessment.details
@@ -628,14 +664,108 @@ async def run_mdt_simulation(
         
         # If we still don't have options, check guideline recommendations
         if not treatment_options and final_context.guideline_recommendations:
-            for rec in final_context.guideline_recommendations:
-                if "recommendations" in rec and rec["recommendations"]:
-                    if isinstance(rec["recommendations"], list):
-                        for item in rec["recommendations"]:
-                            if isinstance(item, str) and len(item) > 10:
-                                treatment_options.append({"option": item, "source": "Guideline Recommendations"})
-                    elif isinstance(rec["recommendations"], str):
-                        treatment_options.append({"option": rec["recommendations"], "source": "Guideline Recommendations"})
+            # Handle new GuidelineAgent format (structured sections)
+            if isinstance(final_context.guideline_recommendations, dict):
+                # Extract treatment recommendations section
+                treatment_recs = final_context.guideline_recommendations.get("treatment_recommendations", "")
+                disease_chars = final_context.guideline_recommendations.get("disease_characteristics", "")
+                evidence_info = final_context.guideline_recommendations.get("evidence_levels", "")
+                special_cons = final_context.guideline_recommendations.get("special_considerations", "")
+                metadata = final_context.guideline_recommendations.get("metadata", {})
+                
+                # Process treatment recommendations into structured format
+                guideline_recommendations.append({
+                    "guideline": "Treatment Guidelines",
+                    "recommendation": treatment_recs,
+                    "evidence_level": evidence_info,
+                    "source": metadata.get("guideline_sources", ["Clinical Guidelines"])[0] if isinstance(metadata.get("guideline_sources"), list) else "Clinical Guidelines"
+                })
+                
+                # Add disease characteristics if present
+                if disease_chars:
+                    guideline_recommendations.append({
+                        "guideline": "Disease Assessment",
+                        "recommendation": disease_chars,
+                        "evidence_level": evidence_info,
+                        "source": "Clinical Assessment"
+                    })
+                
+                # Add special considerations if present
+                if special_cons:
+                    guideline_recommendations.append({
+                        "guideline": "Special Considerations",
+                        "recommendation": special_cons,
+                        "evidence_level": evidence_info,
+                        "source": "Clinical Guidelines"
+                    })
+                
+                # Extract treatment options from treatment recommendations
+                treatment_options.append({
+                    "option": treatment_recs,
+                    "source": "Clinical Guidelines",
+                    "evidence_level": evidence_info
+                })
+            else:
+                # Handle legacy format
+                for rec in final_context.guideline_recommendations:
+                    # Handle both old and new format for guideline recommendations
+                    if isinstance(rec, dict):
+                        if "category" in rec and "recommendation" in rec:
+                            # Legacy format from GuidelineAgent
+                            guideline_recommendations.append({
+                                "guideline": rec["category"],
+                                "recommendation": rec["recommendation"],
+                                "evidence_level": rec.get("evidence_level", "Not specified"),
+                                "source": rec.get("guideline_source", "Not specified")
+                            })
+                            
+                            # If this is a treatment guideline, add to treatment options
+                            if rec["category"] == "Treatment Guidelines":
+                                treatment_options.append({
+                                    "option": rec["recommendation"],
+                                    "source": rec.get("guideline_source", "Clinical Guidelines"),
+                                    "evidence_level": rec.get("evidence_level", "Not specified")
+                                })
+                        elif "recommendations" in rec:
+                            # Very old legacy format
+                            recs = rec["recommendations"] if isinstance(rec["recommendations"], list) else [rec["recommendations"]]
+                            for r in recs:
+                                if isinstance(r, str) and len(r) > 10:
+                                    guideline_recommendations.append({
+                                        "guideline": "Clinical Guideline",
+                                        "recommendation": r,
+                                        "evidence_level": rec.get("evidence_level", "Not specified"),
+                                        "source": "Clinical Guidelines"
+                                    })
+                                    # Also add to treatment options
+                                    treatment_options.append({
+                                        "option": r,
+                                        "source": "Clinical Guidelines",
+                                        "evidence_level": rec.get("evidence_level", "Not specified")
+                                    })
+                    elif isinstance(rec, str) and len(rec) > 10:
+                        # Simple string format
+                        guideline_recommendations.append({
+                            "guideline": "Clinical Guideline",
+                            "recommendation": rec,
+                            "evidence_level": "Not specified",
+                            "source": "Clinical Guidelines"
+                        })
+                        # Also add to treatment options
+                        treatment_options.append({
+                            "option": rec,
+                            "source": "Clinical Guidelines",
+                            "evidence_level": "Not specified"
+                        })
+
+        # If no recommendations found, add a placeholder
+        if not guideline_recommendations:
+            guideline_recommendations = [{
+                "guideline": "General Guideline",
+                "recommendation": "Please refer to clinical guidelines for specific recommendations.",
+                "evidence_level": "Not specified",
+                "source": "System"
+            }]
         
         # If we still have no treatment options, use a more descriptive placeholder
         if not treatment_options:
@@ -662,21 +792,22 @@ async def run_mdt_simulation(
                     f"Areas for Improvement:{improvements_text}"
                 )
         
-        # Create the final report from the context
-        final_report = MDTReport(
+        # Create the final MDT report
+        mdt_report = MDTReport(
             patient_id=final_context.patient_case.patient_id,
-            summary=final_context.summary.get("summary") or "MDT analysis completed",
+            summary=final_context.summary.get("summary", "No summary available"),
             ehr_analysis=final_context.ehr_analysis.dict() if final_context.ehr_analysis else {},
-            imaging_analysis=final_context.imaging_analysis.dict() if final_context.imaging_analysis else {},
-            pathology_analysis=final_context.pathology_analysis.dict() if final_context.pathology_analysis else {},
-            guideline_recommendations=final_context.guideline_recommendations if final_context.guideline_recommendations else [],
+            imaging_analysis=final_context.imaging_analysis.dict() if final_context.imaging_analysis else None,
+            pathology_analysis=final_context.pathology_analysis.dict() if final_context.pathology_analysis else None,
+            guideline_recommendations=guideline_recommendations,
             specialist_assessment=final_context.specialist_assessment.dict() if final_context.specialist_assessment else {},
             treatment_options=treatment_options,
             evaluation_score=final_context.evaluation.get("score") if final_context.evaluation else None,
             evaluation_comments=final_context.evaluation.get("comments") if final_context.evaluation else None,
             evaluation_formatted=evaluation_formatted,
-            markdown_summary=final_context.summary.get("markdown_summary") if final_context.summary else None,
-            timestamp=datetime.utcnow(),
+            markdown_content=final_context.summary.get("markdown_content", "No markdown content available"),
+            markdown_summary=final_context.summary.get("markdown_content") if final_context.summary and final_context.summary.get("markdown_content") else None,
+            timestamp=datetime.utcnow()
         )
         
         # Custom recursive function to ensure all nested objects are properly serialized
@@ -715,11 +846,11 @@ async def run_mdt_simulation(
                 return obj
         
         # Process the final report to ensure all objects are serializable
-        report_dict = final_report.dict() if hasattr(final_report, "dict") else final_report.__dict__
+        report_dict = mdt_report.dict() if hasattr(mdt_report, "dict") else mdt_report.__dict__
         serialized_report = ensure_serializable(report_dict)
         
         # Convert serialized report back to an MDTReport object
-        final_report = MDTReport(**serialized_report)
+        mdt_report = MDTReport(**serialized_report)
         
         print("\n\n============ DIRECT CONSOLE OUTPUT OF FINAL REPORT ============")
         print("PATIENT ID:", final_context.patient_case.patient_id)
@@ -747,14 +878,14 @@ async def run_mdt_simulation(
         import json
         try:
             from pydantic import BaseModel
-            if isinstance(final_report, BaseModel):
-                if hasattr(final_report, 'model_dump_json'):
-                    report_json = final_report.model_dump_json()
+            if isinstance(mdt_report, BaseModel):
+                if hasattr(mdt_report, 'model_dump_json'):
+                    report_json = mdt_report.model_dump_json()
                     print("\n======= FINAL REPORT JSON (model_dump_json) =======")
                     print(report_json[:1000])  # Print first 1000 chars to avoid overwhelming the console
                     print("... (truncated) ...")
-                elif hasattr(final_report, 'json'):
-                    report_json = final_report.json()
+                elif hasattr(mdt_report, 'json'):
+                    report_json = mdt_report.json()
                     print("\n======= FINAL REPORT JSON (json method) =======")
                     print(report_json[:1000])  # Print first 1000 chars
                     print("... (truncated) ...")
@@ -767,23 +898,23 @@ async def run_mdt_simulation(
                     return super().default(obj)
             
             report_dict = {}
-            if hasattr(final_report, 'dict'):
-                report_dict = final_report.dict()
-            elif hasattr(final_report, 'model_dump'):
-                report_dict = final_report.model_dump()
+            if hasattr(mdt_report, 'dict'):
+                report_dict = mdt_report.dict()
+            elif hasattr(mdt_report, 'model_dump'):
+                report_dict = mdt_report.model_dump()
             else:
                 # Try direct attribute access to build a dict
                 report_dict = {
-                    "patient_id": getattr(final_report, "patient_id", "unknown"),
-                    "summary": getattr(final_report, "summary", "unknown"),
-                    "ehr_analysis": getattr(final_report, "ehr_analysis", {}),
-                    "imaging_analysis": getattr(final_report, "imaging_analysis", {}),
-                    "pathology_analysis": getattr(final_report, "pathology_analysis", {}),
-                    "guideline_recommendations": getattr(final_report, "guideline_recommendations", []),
-                    "specialist_assessment": getattr(final_report, "specialist_assessment", {}),
-                    "treatment_options": getattr(final_report, "treatment_options", []),
-                    "evaluation_score": getattr(final_report, "evaluation_score", None),
-                    "evaluation_comments": getattr(final_report, "evaluation_comments", None),
+                    "patient_id": getattr(mdt_report, "patient_id", "unknown"),
+                    "summary": getattr(mdt_report, "summary", "unknown"),
+                    "ehr_analysis": getattr(mdt_report, "ehr_analysis", {}),
+                    "imaging_analysis": getattr(mdt_report, "imaging_analysis", {}),
+                    "pathology_analysis": getattr(mdt_report, "pathology_analysis", {}),
+                    "guideline_recommendations": getattr(mdt_report, "guideline_recommendations", []),
+                    "specialist_assessment": getattr(mdt_report, "specialist_assessment", {}),
+                    "treatment_options": getattr(mdt_report, "treatment_options", []),
+                    "evaluation_score": getattr(mdt_report, "evaluation_score", None),
+                    "evaluation_comments": getattr(mdt_report, "evaluation_comments", None),
                     "timestamp": str(datetime.utcnow())
                 }
             
@@ -810,7 +941,7 @@ async def run_mdt_simulation(
             print(f"Error type: {type(json_error)}")
             print(traceback.format_exc())
         
-        print("===> FINAL REPORT CREATED:", final_report)
+        print("===> FINAL REPORT CREATED:", mdt_report)
 
         # --- Emit Final Success Status ---
         await status_service.emit_status_update(
@@ -855,16 +986,16 @@ async def run_mdt_simulation(
         try:
             logger.info(f"Emitting MDT report for run_id: {run_id}")
             print(f"===> EMITTING REPORT for run_id: {run_id}")
-            print(f"===> REPORT TYPE: {type(final_report)}")
-            print(f"===> REPORT DICT METHOD EXISTS: {hasattr(final_report, 'dict')}")
+            print(f"===> REPORT TYPE: {type(mdt_report)}")
+            print(f"===> REPORT DICT METHOD EXISTS: {hasattr(mdt_report, 'dict')}")
             report_data = None
             try:
                 # This is likely failing - use model_dump instead of dict for newer Pydantic versions
-                if hasattr(final_report, 'model_dump'):
-                    report_data = final_report.model_dump()
+                if hasattr(mdt_report, 'model_dump'):
+                    report_data = mdt_report.model_dump()
                     print(f"===> USING model_dump METHOD: {type(report_data)}")
                 else:
-                    report_data = final_report.dict()
+                    report_data = mdt_report.dict()
                     print(f"===> USING dict METHOD: {type(report_data)}")
                 
                 print(f"===> REPORT DATA TYPE: {type(report_data)}")
@@ -880,8 +1011,8 @@ async def run_mdt_simulation(
                 try:
                     import json
                     # Try using __dict__ or serialize the object directly
-                    if hasattr(final_report, '__dict__'):
-                        report_data = final_report.__dict__
+                    if hasattr(mdt_report, '__dict__'):
+                        report_data = mdt_report.__dict__
                         print(f"===> USING __dict__ FALLBACK: {type(report_data)}")
                     else:
                         # Try direct JSON serialization with custom encoder
@@ -891,7 +1022,7 @@ async def run_mdt_simulation(
                                     return obj.isoformat()
                                 return super().default(obj)
                         
-                        report_json = json.dumps(final_report, cls=DateTimeEncoder, default=str)
+                        report_json = json.dumps(mdt_report, cls=DateTimeEncoder, default=str)
                         report_data = json.loads(report_json)
                         print(f"===> USING CUSTOM JSON SERIALIZATION: {type(report_data)}")
                 except Exception as json_error:
@@ -943,7 +1074,7 @@ async def run_mdt_simulation(
                 # Continue execution even if report emission fails
         
         logger.info(f"Finished MDT simulation for run_id: {run_id}. Success. Duration: {datetime.utcnow() - start_time}")
-        return final_report
+        return mdt_report
 
     except Exception as e:
         logger.exception(f"Error during MDT simulation for run_id: {run_id}. Error: {e}", exc_info=True)

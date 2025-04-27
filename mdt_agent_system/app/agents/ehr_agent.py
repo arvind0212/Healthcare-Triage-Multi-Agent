@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from mdt_agent_system.app.core.schemas import PatientCase
+from mdt_agent_system.app.core.schemas.agent_output import AgentOutput
 from mdt_agent_system.app.core.status import StatusUpdateService
 from mdt_agent_system.app.core.logging import get_logger
 from mdt_agent_system.app.agents.base_agent import BaseSpecializedAgent
@@ -10,14 +11,14 @@ from mdt_agent_system.app.agents.base_agent import BaseSpecializedAgent
 logger = get_logger(__name__)
 
 class EHRAgent(BaseSpecializedAgent):
-    """EHR Agent responsible for analyzing patient history and current condition.
+    """EHR Agent responsible for analyzing electronic health records.
     
     This agent focuses on:
-    1. Patient demographics and history
-    2. Current symptoms and clinical status
-    3. Comorbidities and their impact
-    4. Performance status evaluation
-    5. Risk factor assessment
+    1. Reviewing patient medical history
+    2. Analyzing current medications and allergies
+    3. Evaluating comorbidities and risk factors
+    4. Identifying relevant past treatments
+    5. Assessing patient-specific considerations
     """
     
     def __init__(self, run_id: str, status_service: StatusUpdateService, callbacks=None):
@@ -42,8 +43,7 @@ class EHRAgent(BaseSpecializedAgent):
     def _prepare_input(self, patient_case: PatientCase, context: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare input for the EHR agent's analysis.
         
-        Extracts relevant patient data including demographics, medical history,
-        and current condition from the patient case.
+        Extracts relevant EHR data from the patient case.
         
         Args:
             patient_case: The patient case data
@@ -56,103 +56,159 @@ class EHRAgent(BaseSpecializedAgent):
         ehr_context = {
             "patient_id": patient_case.patient_id,
             "demographics": patient_case.demographics,
-            "medical_history": patient_case.medical_history,
+            "medical_history": patient_case.medical_history if hasattr(patient_case, 'medical_history') else {},
+            "current_medications": patient_case.current_medications if hasattr(patient_case, 'current_medications') else [],
+            "allergies": patient_case.allergies if hasattr(patient_case, 'allergies') else [],
             "current_condition": patient_case.current_condition,
             "lab_results": patient_case.lab_results if hasattr(patient_case, 'lab_results') else []
         }
         
         # Convert to JSON string with indentation for better LLM processing
-        context_str = json.dumps(ehr_context, indent=2)
+        # Use a custom JSON encoder to handle datetime objects and other special types
+        class CustomJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if hasattr(obj, "dict") and callable(obj.dict):
+                    return obj.dict()
+                if hasattr(obj, "__dict__"):
+                    return obj.__dict__
+                return str(obj)  # Convert any other objects to string
+        
+        try:
+            context_str = json.dumps(ehr_context, indent=2, cls=CustomJSONEncoder)
+        except Exception as e:
+            logger.error(f"Error serializing EHR context: {str(e)}")
+            # Fallback serialization with simpler data
+            simple_context = {
+                "patient_id": str(ehr_context.get("patient_id", "")),
+                "current_condition": str(ehr_context.get("current_condition", ""))
+            }
+            context_str = json.dumps(simple_context, indent=2)
         
         return {
             "context": context_str,
-            "task": "Analyze the patient's medical history, demographics, and current condition. "
-                    "Provide a structured analysis of key clinical factors, performance status, "
-                    "and implications for treatment planning."
+            "task": (
+                "Provide a comprehensive EHR analysis following this structure:\n\n"
+                "1. Patient Overview\n"
+                "   - Demographics\n"
+                "2. Medical History\n"
+                "   - Past medical conditions\n"
+                "   - Current medications\n"
+                "   - Allergies\n"
+                "3. Clinical Assessment\n"
+                "   - Active conditions\n"
+                "   - Comorbidities\n"
+                "   - Risk factors\n"
+                "4. Treatment History\n"
+                "   - Past interventions\n"
+                "   - Response to treatments\n"
+                "   - Adverse events\n\n"
+                "Format your response with markdown sections and include metadata."
+            )
         }
     
-    def _structure_output(self, llm_output: str) -> Dict[str, Any]:
-        """Structure the LLM output into a standardized format.
-        
-        Attempts to parse the LLM output into a structured format for the EHR analysis.
-        If parsing fails, returns a basic structure with the raw output.
+    def _structure_output(self, parsed_output: AgentOutput) -> Dict[str, Any]:
+        """Structure the parsed output into a standardized format.
         
         Args:
-            llm_output: The raw output from the LLM
+            parsed_output: The parsed output from the output parser
             
         Returns:
             A structured dictionary with the EHR analysis results
         """
-        try:
-            # Basic structure to ensure consistent output format
-            structured_output = {
-                "summary": "",
-                "key_history_points": [],
-                "current_presentation": {
-                    "main_symptoms": [],
-                    "performance_status": "",
-                    "comorbidity_impact": ""
-                },
-                "risk_factors": [],
-                "clinical_implications": []
-            }
+        # Create backward-compatible structure
+        structured_output = {
+            "patient_summary": "",
+            "active_conditions": [],
+            "medications": [],
+            "risk_factors": [],
+            "treatment_history": [],
+            # New fields for enhanced output
+            "markdown_content": parsed_output.markdown_content,
+            "metadata": parsed_output.metadata
+        }
+        
+        # Extract key sections from metadata if available
+        if parsed_output.metadata:
+            key_findings = parsed_output.metadata.get("key_findings", [])
+            clinical_metrics = parsed_output.metadata.get("clinical_metrics", {})
+            risk_assessment = parsed_output.metadata.get("risk_assessment", {})
             
-            # Simple parsing logic - in a production system, this would be more robust
-            # using regex, structured output from the LLM, or a parser model
+            # Map metadata to legacy format
+            if key_findings:
+                structured_output["patient_summary"] = " ".join(key_findings)
             
-            # Extract key sections from the LLM output
-            lines = llm_output.split('\n')
-            current_section = None
+            if clinical_metrics:
+                if "active_conditions" in clinical_metrics:
+                    structured_output["active_conditions"].extend(clinical_metrics["active_conditions"])
+                if "current_medications" in clinical_metrics:
+                    structured_output["medications"].extend(clinical_metrics["current_medications"])
             
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Try to identify sections
-                lower_line = line.lower()
-                if "summary" in lower_line or "assessment" in lower_line:
-                    current_section = "summary"
-                    structured_output["summary"] = line.split(":", 1)[1].strip() if ":" in line else line
-                elif "history" in lower_line or "key points" in lower_line:
-                    current_section = "key_history_points"
-                elif "symptoms" in lower_line or "presentation" in lower_line:
-                    current_section = "main_symptoms"
-                elif "performance status" in lower_line or "ecog" in lower_line:
-                    current_section = "performance_status"
-                    if ":" in line:
-                        structured_output["current_presentation"]["performance_status"] = line.split(":", 1)[1].strip()
-                elif "comorbidity" in lower_line or "comorbidities" in lower_line:
-                    current_section = "comorbidity_impact"
-                    if ":" in line:
-                        structured_output["current_presentation"]["comorbidity_impact"] = line.split(":", 1)[1].strip()
-                elif "risk factor" in lower_line:
-                    current_section = "risk_factors"
-                elif "implication" in lower_line:
-                    current_section = "clinical_implications"
-                # Process line based on current section
-                elif current_section == "key_history_points" and line.startswith("- "):
-                    structured_output["key_history_points"].append(line[2:])
-                elif current_section == "main_symptoms" and line.startswith("- "):
-                    structured_output["current_presentation"]["main_symptoms"].append(line[2:])
-                elif current_section == "risk_factors" and line.startswith("- "):
-                    structured_output["risk_factors"].append(line[2:])
-                elif current_section == "clinical_implications" and line.startswith("- "):
-                    structured_output["clinical_implications"].append(line[2:])
-            
-            # If we couldn't extract a good summary, create one from the first few lines
-            if not structured_output["summary"]:
-                structured_output["summary"] = ' '.join(lines[:3]) if lines else "EHR Analysis Completed"
-            
-            # Include raw output for reference
-            structured_output["raw_output"] = llm_output
-            
-            return structured_output
-            
-        except Exception as e:
-            logger.exception(f"Error structuring EHR output: {str(e)}")
-            # Fallback to a basic structure with raw output
-            return {
-                "summary": "Error structuring output, please see raw response",
-                "raw_output": llm_output
-            } 
+            if risk_assessment:
+                structured_output["risk_factors"] = [
+                    f"{risk}: {score}" for risk, score in risk_assessment.items()
+                ]
+        
+        # Extract sections from markdown content
+        lines = parsed_output.markdown_content.split('\n')
+        overview_text = []
+        in_overview = False
+        for line in lines:
+            if line.strip().startswith('# Patient Overview'):
+                in_overview = True
+                continue
+            elif line.startswith('#'):
+                in_overview = False
+            elif in_overview and line.strip() and not line.strip().startswith('#'):
+                overview_text.append(line.strip('- ').strip())
+        
+        # Use markdown content for patient summary if available and not already set from metadata
+        if overview_text:
+            structured_output["patient_summary"] = " ".join(overview_text)
+        
+        # Extract active conditions from markdown
+        conditions_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Active Conditions" in line or "## Disease Status" in line:
+                conditions_section = True
+                continue
+            if conditions_section and line.strip() and line.startswith('- '):
+                structured_output["active_conditions"].append(line.strip('- '))
+            elif conditions_section and line.startswith('#'):
+                conditions_section = False
+        
+        # Extract medications from markdown
+        medications_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Current Medications" in line:
+                medications_section = True
+                continue
+            if medications_section and line.strip() and line.startswith('- '):
+                structured_output["medications"].append(line.strip('- '))
+            elif medications_section and line.startswith('#'):
+                medications_section = False
+        
+        # Extract treatment history from markdown
+        history_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Treatment History" in line:
+                history_section = True
+                continue
+            if history_section and line.strip() and line.startswith('- '):
+                structured_output["treatment_history"].append(line.strip('- '))
+            elif history_section and line.startswith('#'):
+                history_section = False
+        
+        # Ensure we have at least some basic content in required fields
+        if not structured_output["patient_summary"]:
+            structured_output["patient_summary"] = "EHR analysis completed."
+        
+        if not structured_output["active_conditions"]:
+            structured_output["active_conditions"] = ["Current medical conditions under review."]
+        
+        if not structured_output["medications"]:
+            structured_output["medications"] = ["Current medications under review."]
+        
+        if not structured_output["treatment_history"]:
+            structured_output["treatment_history"] = ["Past treatment history under review."]
+        
+        return structured_output 

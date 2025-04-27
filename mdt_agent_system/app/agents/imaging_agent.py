@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from mdt_agent_system.app.core.schemas import PatientCase
+from mdt_agent_system.app.core.schemas.agent_output import AgentOutput
 from mdt_agent_system.app.core.status import StatusUpdateService
 from mdt_agent_system.app.core.logging import get_logger
 from mdt_agent_system.app.agents.base_agent import BaseSpecializedAgent
@@ -75,7 +76,6 @@ class ImagingAgent(BaseSpecializedAgent):
                     return obj.dict()
                 if hasattr(obj, "__dict__"):
                     return obj.__dict__
-                # Handle other special types as needed
                 return str(obj)  # Convert any other objects to string
         
         try:
@@ -91,179 +91,135 @@ class ImagingAgent(BaseSpecializedAgent):
         
         return {
             "context": context_str,
-            "task": "Analyze the patient's imaging studies. Provide a structured interpretation of key findings, "
-                    "disease extent, staging assessment, and implications for treatment planning."
+            "task": (
+                "Provide a comprehensive imaging analysis following this structure:\n\n"
+                "1. Technical Assessment\n"
+                "   - Study quality\n"
+                "   - Comparison with prior imaging\n"
+                "   - Technical limitations\n\n"
+                "2. Clinical Findings\n"
+                "   - Primary lesion characteristics\n"
+                "   - Disease extent\n"
+                "   - Secondary findings\n\n"
+                "3. Staging Assessment\n"
+                "   - TNM classification\n"
+                "   - Size measurements\n"
+                "   - Progression criteria\n\n"
+                "Format your response with markdown sections and include metadata."
+            )
         }
     
-    def _structure_output(self, llm_output: str) -> Dict[str, Any]:
-        """Structure the LLM output into a standardized format.
-        
-        Attempts to parse the LLM output into a structured format for the imaging analysis.
-        If parsing fails, returns a basic structure with the raw output.
+    def _structure_output(self, parsed_output: AgentOutput) -> Dict[str, Any]:
+        """Structure the parsed output into a standardized format.
         
         Args:
-            llm_output: The raw output from the LLM
+            parsed_output: The parsed output from the output parser
             
         Returns:
             A structured dictionary with the imaging analysis results
         """
-        try:
-            # Basic structure to ensure consistent output format
-            structured_output = {
-                "summary": "",
-                "disease_extent": {
-                    "primary_tumor": "",
-                    "nodal_status": "",
-                    "metastatic_status": ""
-                },
-                "staging": {
-                    "clinical_stage": "",
-                    "key_findings": []
-                },
-                "treatment_implications": []
-            }
+        # Create backward-compatible structure
+        structured_output = {
+            "summary": "",
+            "disease_extent": {
+                "primary_tumor": "",
+                "nodal_status": "",
+                "metastatic_status": ""
+            },
+            "staging": {
+                "clinical_stage": "",
+                "key_findings": []
+            },
+            "treatment_implications": [],
+            # New fields for enhanced output
+            "markdown_content": parsed_output.markdown_content,
+            "metadata": parsed_output.metadata
+        }
+        
+        # Extract key sections from metadata if available
+        if parsed_output.metadata:
+            measurements = parsed_output.metadata.get("measurements", {})
+            key_findings = parsed_output.metadata.get("key_findings", [])
+            confidence_scores = parsed_output.metadata.get("confidence_scores", {})
             
-            # Simple parsing logic - in a production system, this would be more robust
-            # using regex, structured output from the LLM, or a parser model
+            # Map metadata to legacy format
+            if measurements:
+                if "primary_lesion" in measurements:
+                    structured_output["disease_extent"]["primary_tumor"] = f"Size: {measurements['primary_lesion']}"
+                if "significant_nodes" in measurements:
+                    structured_output["disease_extent"]["nodal_status"] = f"Nodes: {', '.join(measurements['significant_nodes'])}"
             
-            # Extract key sections from the LLM output
-            lines = llm_output.split('\n')
-            current_section = None
-            
+            if key_findings:
+                structured_output["staging"]["key_findings"].extend(key_findings)
+                structured_output["summary"] = " ".join(key_findings[:2])  # Use first two findings as summary
+        
+        # Extract sections from markdown content as fallback
+        if not structured_output["summary"]:
+            lines = parsed_output.markdown_content.split('\n')
             for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Detect key sections by line content
-                lower_line = line.lower()
-                
-                if "summary" in lower_line and (":" in line or line.endswith("summary")):
-                    current_section = "summary"
-                    content = line.split(":", 1)[1].strip() if ":" in line else ""
-                    if content:
-                        structured_output["summary"] = content
-                
-                elif "disease extent" in lower_line or "tumor extent" in lower_line:
-                    current_section = "disease_extent"
-                
-                elif "primary" in lower_line and ("tumor" in lower_line or "lesion" in lower_line):
-                    if ":" in line:
-                        structured_output["disease_extent"]["primary_tumor"] = line.split(":", 1)[1].strip()
-                    current_section = "primary_tumor"
-                
-                elif "nodal" in lower_line or "lymph node" in lower_line:
-                    if ":" in line:
-                        structured_output["disease_extent"]["nodal_status"] = line.split(":", 1)[1].strip()
-                    current_section = "nodal_status"
-                
-                elif "metasta" in lower_line or "distant" in lower_line:
-                    if ":" in line:
-                        structured_output["disease_extent"]["metastatic_status"] = line.split(":", 1)[1].strip()
-                    current_section = "metastatic_status"
-                
-                elif "staging" in lower_line or "stage" in lower_line:
-                    current_section = "staging"
-                
-                elif "clinical stage" in lower_line or "tnm" in lower_line:
-                    if ":" in line:
-                        structured_output["staging"]["clinical_stage"] = line.split(":", 1)[1].strip()
-                    current_section = "clinical_stage"
-                
-                elif "key finding" in lower_line or "important finding" in lower_line:
-                    current_section = "key_findings"
-                
-                elif "treatment" in lower_line and "implication" in lower_line:
-                    current_section = "treatment_implications"
-                
-                # Process line based on the current section
-                elif current_section:
-                    if current_section == "summary" and not structured_output["summary"]:
-                        structured_output["summary"] = line
-                    
-                    elif current_section == "primary_tumor" and not structured_output["disease_extent"]["primary_tumor"]:
-                        structured_output["disease_extent"]["primary_tumor"] = line
-                    
-                    elif current_section == "nodal_status" and not structured_output["disease_extent"]["nodal_status"]:
-                        structured_output["disease_extent"]["nodal_status"] = line
-                    
-                    elif current_section == "metastatic_status" and not structured_output["disease_extent"]["metastatic_status"]:
-                        structured_output["disease_extent"]["metastatic_status"] = line
-                    
-                    elif current_section == "clinical_stage" and not structured_output["staging"]["clinical_stage"]:
-                        structured_output["staging"]["clinical_stage"] = line
-                    
-                    elif current_section == "key_findings":
-                        if line.startswith("-") or line.startswith("*"):
-                            structured_output["staging"]["key_findings"].append(line[1:].strip())
-                        elif len(line) > 3:  # Avoid adding short lines or section headers
-                            structured_output["staging"]["key_findings"].append(line)
-                    
-                    elif current_section == "treatment_implications":
-                        if line.startswith("-") or line.startswith("*"):
-                            structured_output["treatment_implications"].append(line[1:].strip())
-                        elif len(line) > 3:  # Avoid adding short lines or section headers
-                            structured_output["treatment_implications"].append(line)
-            
-            # If we didn't extract a proper summary, use the first paragraph
-            if not structured_output["summary"] and len(lines) > 1:
-                for line in lines[:5]:  # Check first few lines
-                    if len(line.strip()) > 30:  # Reasonably long line
-                        structured_output["summary"] = line.strip()
+                if "# Clinical Findings" in line or "## Primary Disease" in line:
+                    next_idx = lines.index(line) + 1
+                    if next_idx < len(lines):
+                        structured_output["summary"] = lines[next_idx].strip('- ')
                         break
-            
-            # Ensure all required fields have values
-            if not structured_output["summary"]:
-                structured_output["summary"] = "Imaging analysis completed."
-            
-            if not structured_output["disease_extent"]["primary_tumor"]:
-                structured_output["disease_extent"]["primary_tumor"] = "Details not specified"
-                
-            if not structured_output["staging"]["key_findings"] and lines:
-                # Extract potential findings from the text if no structured findings were identified
-                for line in lines:
-                    if len(line.strip()) > 10 and any(term in line.lower() for term in ["mass", "lesion", "nodule", "opacity"]):
-                        structured_output["staging"]["key_findings"].append(line.strip())
-                
-                # If still empty, add a placeholder
-                if not structured_output["staging"]["key_findings"]:
-                    structured_output["staging"]["key_findings"] = ["Imaging findings analyzed"]
-            
-            # Add formatted string representations for nested objects
-            # Format disease_extent
-            disease_extent = structured_output["disease_extent"]
-            structured_output["disease_extent_formatted"] = (
-                f"Primary Tumor: {disease_extent['primary_tumor']}. "
-                f"Nodal Status: {disease_extent['nodal_status']}. "
-                f"Metastatic Status: {disease_extent['metastatic_status']}."
-            )
-            
-            # Format staging
-            staging = structured_output["staging"]
-            key_findings_text = "; ".join(staging["key_findings"]) if staging["key_findings"] else "None specified"
-            structured_output["staging_formatted"] = (
-                f"Clinical Stage: {staging['clinical_stage']}. "
-                f"Key Findings: {key_findings_text}"
-            )
-            
-            return structured_output
-            
-        except Exception as e:
-            logger.warning(f"Error structuring Imaging Agent output: {str(e)}")
-            # Fallback to basic structure with raw output
-            return {
-                "summary": "Imaging analysis completed with parsing limitations.",
-                "raw_output": llm_output,
-                "disease_extent": {
-                    "primary_tumor": "See raw output",
-                    "nodal_status": "See raw output",
-                    "metastatic_status": "See raw output"
-                },
-                "disease_extent_formatted": "Error parsing disease extent information. See raw output.",
-                "staging": {
-                    "clinical_stage": "Not extracted",
-                    "key_findings": ["See raw output"]
-                },
-                "staging_formatted": "Error parsing staging information. See raw output.",
-                "processing_error": str(e)
-            } 
+        
+        # Extract disease extent from markdown
+        disease_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Disease Extent" in line:
+                disease_section = True
+                continue
+            if disease_section and line.strip() and line.startswith('- '):
+                content = line.strip('- ')
+                if "primary" in content.lower() or "tumor" in content.lower():
+                    structured_output["disease_extent"]["primary_tumor"] = content
+                elif "node" in content.lower() or "lymph" in content.lower():
+                    structured_output["disease_extent"]["nodal_status"] = content
+                elif "metasta" in content.lower() or "distant" in content.lower():
+                    structured_output["disease_extent"]["metastatic_status"] = content
+        
+        # Extract staging from markdown
+        staging_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "# Staging Assessment" in line or "## Staging Assessment" in line:
+                staging_section = True
+                continue
+            if staging_section and line.strip():
+                if line.startswith('#'):  # Exit if we hit another section
+                    staging_section = False
+                    continue
+                if line.startswith('- '):
+                    content = line.strip('- ').strip()
+                    if "stage:" in content.lower() or "clinical stage:" in content.lower():
+                        # Extract the actual stage value after the colon
+                        stage_parts = content.split(':')
+                        if len(stage_parts) > 1:
+                            structured_output["staging"]["clinical_stage"] = stage_parts[1].strip()
+                        else:
+                            structured_output["staging"]["clinical_stage"] = content
+                    else:
+                        structured_output["staging"]["key_findings"].append(content)
+        
+        # Extract treatment implications from markdown
+        implications_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Clinical Correlation" in line:
+                implications_section = True
+                continue
+            if implications_section and line.strip() and line.startswith('- '):
+                structured_output["treatment_implications"].append(line.strip('- '))
+        
+        # Ensure we have at least some basic content in required fields
+        if not structured_output["summary"]:
+            structured_output["summary"] = "Imaging analysis completed."
+        
+        if not structured_output["disease_extent"]["primary_tumor"]:
+            structured_output["disease_extent"]["primary_tumor"] = "Primary tumor assessment completed."
+        
+        if not structured_output["staging"]["clinical_stage"]:
+            structured_output["staging"]["clinical_stage"] = "Staging assessment completed."
+        
+        if not structured_output["treatment_implications"]:
+            structured_output["treatment_implications"] = ["Treatment implications based on imaging findings."]
+        
+        return structured_output 

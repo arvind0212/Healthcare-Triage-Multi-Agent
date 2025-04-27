@@ -5,11 +5,30 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mdt-agent-system"
 version = "0.1.0"
-# Add other metadata like authors, description, readme, requires-python, dependencies, etc. as needed
-# For now, we'll keep it minimal to just make the package findable.
-# If you have a requirements.txt, you might list dependencies here or keep them separate.
+description = "Multi-Agent System for Medical Decision Support"
+requires-python = ">=3.8"
+dependencies = [
+    "langchain>=0.1.0",
+    "pydantic>=2.0.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0"
+]
 
 [tool.setuptools.packages.find]
-where = ["."] # ["mdt_agent_system"] might be more precise if src layout used
-include = ["mdt_agent_system*"] # Adjust if your structure is different
-exclude = ["mdt_agent_system.tests*"] # Exclude test directories from the installed package 
+where = ["."]
+include = ["mdt_agent_system*"]
+exclude = ["mdt_agent_system.tests*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["mdt_agent_system/app/tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning"
+]
+
+[tool.pytest-asyncio]
+asyncio_default_fixture_loop_scope = "function" 

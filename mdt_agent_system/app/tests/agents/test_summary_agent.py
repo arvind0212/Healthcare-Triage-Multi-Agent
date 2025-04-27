@@ -50,22 +50,33 @@ sample_context = {
 
 sample_llm_output = """# MDT Summary: P12345
 
-## Diagnosis & Staging
+<details>
+<summary>Diagnosis & Staging</summary>
+
 - **Confirmed Diagnosis**: Musculoskeletal Chest Pain
 - **Stage**: Low-risk
 - **Key Molecular Findings**: None
 - **Performance Status**: Good
 
-## Key Recommendations
+</details>
+
+<details>
+<summary>Key Recommendations</summary>
+
 1. Stress test to rule out cardiac etiology
 2. Risk factor modification for hypertension
 3. NSAIDs for pain relief
 
-## Critical Next Steps
+</details>
+
+<details>
+<summary>Critical Next Steps</summary>
+
 - [ ] Schedule stress test within 1 week
 - [ ] Follow-up with primary care in 2 weeks
 - [ ] Smoking cessation counseling
-"""
+
+</details>"""
 
 @pytest.mark.asyncio
 async def test_summary_agent_process():
@@ -87,9 +98,9 @@ async def test_summary_agent_process():
     result = await agent.process(sample_patient_case, sample_context)
     
     # Validate the result
-    assert "markdown_summary" in result
-    assert result["markdown_summary"] == sample_llm_output
-    assert "# MDT Summary: P12345" in result["markdown_summary"]
+    assert "markdown_content" in result
+    assert result["markdown_content"] == sample_llm_output
+    assert "# MDT Summary: P12345" in result["markdown_content"]
     
     # Verify status updates were emitted
     assert status_service.emit_status_update.call_count == 2
@@ -132,5 +143,7 @@ def test_summary_agent_structure_output():
     result = agent._structure_output(sample_llm_output)
     
     # Validate the result
-    assert "markdown_summary" in result
-    assert result["markdown_summary"] == sample_llm_output 
+    assert isinstance(result, dict)
+    assert "markdown_content" in result
+    assert result["markdown_content"] == sample_llm_output
+    assert "# MDT Summary: P12345" in result["markdown_content"] 

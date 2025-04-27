@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from mdt_agent_system.app.core.schemas import PatientCase
+from mdt_agent_system.app.core.schemas.agent_output import AgentOutput
 from mdt_agent_system.app.core.status import StatusUpdateService
 from mdt_agent_system.app.core.logging import get_logger
 from mdt_agent_system.app.agents.base_agent import BaseSpecializedAgent
@@ -76,137 +77,98 @@ class SpecialistAgent(BaseSpecializedAgent):
         
         return {
             "context": context_str,
-            "task": "Synthesize all available information and provide an expert clinical assessment "
-                    "including treatment recommendations, risk stratification, and special considerations. "
-                    "Consider both patient-specific factors and guideline recommendations."
+            "task": (
+                "Provide a comprehensive clinical assessment following this structure:\n\n"
+                "1. Clinical Assessment\n"
+                "   - Synthesize all available information\n"
+                "   - Evaluate disease status and progression\n"
+                "   - Consider patient-specific factors\n\n"
+                "2. Treatment Planning\n"
+                "   - Consider all therapeutic options\n"
+                "   - Evaluate risk-benefit ratios\n"
+                "   - Account for patient preferences\n\n"
+                "3. Evidence Integration\n"
+                "   - Apply current clinical guidelines\n"
+                "   - Consider clinical trial options\n\n"
+                "Format your response with markdown sections and include metadata."
+            )
         }
     
-    def _structure_output(self, llm_output: str) -> Dict[str, Any]:
-        """Structure the LLM output into a standardized format.
-        
-        Attempts to parse the LLM output into a structured format for the specialist assessment.
-        If parsing fails, returns a basic structure with the raw output.
+    def _structure_output(self, parsed_output: AgentOutput) -> Dict[str, Any]:
+        """Structure the parsed output into a standardized format.
         
         Args:
-            llm_output: The raw output from the LLM
+            parsed_output: The parsed output from the output parser
             
         Returns:
             A structured dictionary with the specialist assessment
         """
-        try:
-            # Basic structure to ensure consistent output format
-            structured_output = {
-                "overall_assessment": "",
-                "treatment_considerations": [],
-                "risk_assessment": "",
-                "proposed_approach": "",
-                "follow_up_recommendations": []
-            }
+        # Create backward-compatible structure
+        structured_output = {
+            "overall_assessment": "",
+            "treatment_considerations": [],
+            "risk_assessment": "",
+            "proposed_approach": "",
+            "follow_up_recommendations": [],
+            # New fields for enhanced output
+            "markdown_content": parsed_output.markdown_content,
+            "metadata": parsed_output.metadata
+        }
+        
+        # Extract key sections from metadata if available
+        if parsed_output.metadata:
+            key_findings = parsed_output.metadata.get("key_findings", [])
+            confidence_scores = parsed_output.metadata.get("confidence_scores", {})
+            clinical_metrics = parsed_output.metadata.get("clinical_metrics", {})
             
-            # Simple parsing logic - in a production system, this would be more robust
-            # using regex, structured output from the LLM, or a parser model
+            # Map metadata to legacy format
+            if key_findings:
+                structured_output["overall_assessment"] = " ".join(key_findings)
             
-            # Extract key sections from the LLM output
-            lines = llm_output.split('\n')
-            current_section = None
+            if "treatment_plan" in confidence_scores:
+                structured_output["proposed_approach"] = f"Treatment plan confidence: {confidence_scores['treatment_plan']}"
             
+            if clinical_metrics:
+                risk_level = clinical_metrics.get("case_complexity", "")
+                urgency = clinical_metrics.get("treatment_urgency", "")
+                structured_output["risk_assessment"] = f"Case complexity: {risk_level}, Urgency: {urgency}"
+        
+        # Extract sections from markdown content as fallback
+        if not structured_output["overall_assessment"]:
+            lines = parsed_output.markdown_content.split('\n')
             for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Detect key sections by line content
-                lower_line = line.lower()
-                
-                if any(x in lower_line for x in ["overall assessment", "clinical assessment", "assessment summary"]):
-                    current_section = "overall_assessment"
-                    content = line.split(":", 1)[1].strip() if ":" in line else ""
-                    if content:
-                        structured_output["overall_assessment"] = content
-                
-                elif any(x in lower_line for x in ["treatment consideration", "therapeutic consideration"]):
-                    current_section = "treatment_considerations"
-                
-                elif any(x in lower_line for x in ["risk assessment", "risk stratification", "prognostic assessment"]):
-                    current_section = "risk_assessment"
-                    content = line.split(":", 1)[1].strip() if ":" in line else ""
-                    if content:
-                        structured_output["risk_assessment"] = content
-                
-                elif any(x in lower_line for x in ["proposed approach", "recommended approach", "treatment approach"]):
-                    current_section = "proposed_approach"
-                    content = line.split(":", 1)[1].strip() if ":" in line else ""
-                    if content:
-                        structured_output["proposed_approach"] = content
-                
-                elif any(x in lower_line for x in ["follow-up", "follow up", "follow-up recommendation"]):
-                    current_section = "follow_up_recommendations"
-                
-                # Process line based on the current section
-                elif current_section:
-                    if current_section == "overall_assessment" and not structured_output["overall_assessment"]:
-                        structured_output["overall_assessment"] = line
-                    
-                    elif current_section == "risk_assessment" and not structured_output["risk_assessment"]:
-                        structured_output["risk_assessment"] = line
-                    
-                    elif current_section == "proposed_approach" and not structured_output["proposed_approach"]:
-                        structured_output["proposed_approach"] = line
-                    
-                    elif current_section == "treatment_considerations":
-                        if line.startswith("-") or line.startswith("*"):
-                            structured_output["treatment_considerations"].append(line[1:].strip())
-                        elif len(line) > 5:  # Avoid adding short lines or section headers
-                            structured_output["treatment_considerations"].append(line)
-                    
-                    elif current_section == "follow_up_recommendations":
-                        if line.startswith("-") or line.startswith("*"):
-                            structured_output["follow_up_recommendations"].append(line[1:].strip())
-                        elif len(line) > 5:  # Avoid adding short lines or section headers
-                            structured_output["follow_up_recommendations"].append(line)
-            
-            # If we didn't extract a proper overall assessment, use the first paragraph
-            if not structured_output["overall_assessment"] and len(lines) > 1:
-                for line in lines[:5]:  # Check first few lines
-                    if len(line.strip()) > 30:  # Reasonably long line
-                        structured_output["overall_assessment"] = line.strip()
+                if "# Clinical Assessment" in line or "## Disease Status" in line:
+                    next_idx = lines.index(line) + 1
+                    if next_idx < len(lines):
+                        structured_output["overall_assessment"] = lines[next_idx].strip('- ')
                         break
-            
-            # Ensure all required fields have values
-            if not structured_output["overall_assessment"]:
-                structured_output["overall_assessment"] = "Specialist assessment completed."
-            
-            if not structured_output["proposed_approach"]:
-                # Try to derive from treatment considerations
-                if structured_output["treatment_considerations"]:
-                    structured_output["proposed_approach"] = "Treatment plan based on considerations listed."
-                else:
-                    structured_output["proposed_approach"] = "Individualized approach recommended."
-            
-            # Extract treatment considerations if they're not already identified
-            if not structured_output["treatment_considerations"]:
-                for line in lines:
-                    line = line.strip()
-                    if len(line) > 10 and any(term in line.lower() for term in ["treat", "therapy", "intervention", "management"]):
-                        if not line.endswith(":") and not line.endswith("treatments") and not line.endswith("considerations"):
-                            structured_output["treatment_considerations"].append(line)
-                
-                # Limit to a reasonable number of considerations
-                structured_output["treatment_considerations"] = structured_output["treatment_considerations"][:5]
-                
-                # If still empty, add a placeholder
-                if not structured_output["treatment_considerations"]:
-                    structured_output["treatment_considerations"] = ["Individualized treatment recommended based on clinical factors."]
-            
-            return structured_output
-            
-        except Exception as e:
-            logger.warning(f"Error structuring Specialist Agent output: {str(e)}")
-            # Fallback to basic structure with raw output
-            return {
-                "overall_assessment": "Specialist assessment completed with parsing limitations.",
-                "raw_output": llm_output,
-                "treatment_considerations": ["See raw output for treatment details"],
-                "proposed_approach": "Individualized approach recommended - see raw output for details.",
-                "processing_error": str(e)
-            } 
+        
+        # Extract treatment considerations from markdown
+        treatment_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Treatment Recommendations" in line:
+                treatment_section = True
+                continue
+            if treatment_section and line.strip() and line.startswith('- '):
+                structured_output["treatment_considerations"].append(line.strip('- '))
+        
+        # Extract follow-up recommendations from markdown
+        followup_section = False
+        for line in parsed_output.markdown_content.split('\n'):
+            if "## Follow-up Plan" in line:
+                followup_section = True
+                continue
+            if followup_section and line.strip() and line.startswith('- '):
+                structured_output["follow_up_recommendations"].append(line.strip('- '))
+        
+        # Ensure we have at least some basic content in required fields
+        if not structured_output["overall_assessment"]:
+            structured_output["overall_assessment"] = "Clinical assessment completed."
+        
+        if not structured_output["treatment_considerations"]:
+            structured_output["treatment_considerations"] = ["Individualized treatment plan recommended."]
+        
+        if not structured_output["follow_up_recommendations"]:
+            structured_output["follow_up_recommendations"] = ["Regular follow-up as clinically indicated."]
+        
+        return structured_output 

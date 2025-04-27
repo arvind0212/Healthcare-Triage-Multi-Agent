@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 # Assuming schemas are in the correct path relative to this file
 # Adjust imports if necessary based on your project structure
@@ -7,6 +7,7 @@ from mdt_agent_system.app.core.schemas import PatientCase
 from mdt_agent_system.app.core.status import StatusUpdateService
 from mdt_agent_system.app.core.logging import get_logger
 from mdt_agent_system.app.agents.base_agent import BaseSpecializedAgent
+from mdt_agent_system.app.core.schemas import AgentOutput
 
 logger = get_logger(__name__)
 
@@ -54,8 +55,19 @@ class SummaryAgent(BaseSpecializedAgent):
             "task": "Create a concise, markdown-formatted executive summary of the MDT findings and recommendations."
         }
     
-    def _structure_output(self, llm_output: str) -> Dict[str, Any]:
+    def _structure_output(self, llm_output: Union[str, AgentOutput]) -> Dict[str, Any]:
         """Preserve markdown formatting from LLM output"""
-        logger.debug(f"Structuring SummaryAgent output. LLM output length: {len(llm_output)}")
-        structured_output = {"markdown_summary": llm_output}
-        return structured_output 
+        try:
+            # Handle AgentOutput object
+            if isinstance(llm_output, AgentOutput):
+                return {
+                    "markdown_content": llm_output.markdown_content,
+                    "metadata": llm_output.metadata
+                }
+            
+            # Handle string input
+            logger.debug(f"Structuring SummaryAgent output from string input")
+            return {"markdown_content": llm_output}
+        except Exception as e:
+            logger.error(f"Error structuring summary output: {e}")
+            return {"markdown_content": str(llm_output)} 

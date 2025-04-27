@@ -9,11 +9,13 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import BaseMessage
 
 from mdt_agent_system.app.core.schemas import PatientCase, StatusUpdate
+from mdt_agent_system.app.core.schemas.agent_output import AgentOutput
 from mdt_agent_system.app.core.status import StatusUpdateService, Status
 from mdt_agent_system.app.core.llm import get_llm
 from mdt_agent_system.app.core.memory.persistence import PersistentConversationMemory
 from mdt_agent_system.app.core.logging import get_logger
 from mdt_agent_system.app.core.samples.prompts import get_prompt_template
+from mdt_agent_system.app.core.output_parser import MDTOutputParser
 
 logger = get_logger(__name__)
 
@@ -42,6 +44,7 @@ class BaseSpecializedAgent(ABC):
         self.status_service = status_service
         self.callbacks = callbacks or []
         self.llm = get_llm(callbacks=self.callbacks)
+        self.output_parser = MDTOutputParser()
         
         # Initialize memory with a unique session ID for this run and agent
         memory_session_id = f"{run_id}_{agent_id}"
@@ -108,8 +111,11 @@ class BaseSpecializedAgent(ABC):
             # Process with LLM
             result = await self._run_analysis(agent_input)
             
-            # Process and structure the output
-            structured_output = self._structure_output(result)
+            # Parse the output using the new parser
+            parsed_output = self.output_parser.parse_llm_output(result)
+            
+            # Structure the output while maintaining backward compatibility
+            structured_output = self._structure_output(parsed_output)
             
             # Save to memory
             self._save_to_memory(agent_input, structured_output)
@@ -165,15 +171,17 @@ class BaseSpecializedAgent(ABC):
         return response.content
     
     @abstractmethod
-    def _structure_output(self, llm_output: str) -> Dict[str, Any]:
-        """Structure the LLM output into a standardized format.
+    def _structure_output(self, parsed_output: AgentOutput) -> Dict[str, Any]:
+        """Structure the parsed output into a standardized format.
         
         Args:
-            llm_output: The raw output from the LLM
+            parsed_output: The parsed output from the output parser
             
         Returns:
             A structured dictionary with the analysis results
         """
+        # This method should be implemented by each agent to handle their specific output structure
+        # while maintaining backward compatibility
         pass
     
     def _save_to_memory(self, inputs: Dict[str, Any], outputs: Dict[str, Any]) -> None:
@@ -184,9 +192,16 @@ class BaseSpecializedAgent(ABC):
             outputs: The structured output from the agent
         """
         try:
+            # Save both the new structured output and maintain memory compatibility
+            memory_output = {
+                "structured_output": outputs,
+                "markdown_content": outputs.get("markdown_content", ""),
+                "metadata": outputs.get("metadata", {})
+            }
+            
             self.memory.save_context(
                 {"input": str(inputs)},
-                {"output": str(outputs)}
+                {"output": str(memory_output)}
             )
             logger.debug(f"Saved {self.agent_id} interaction to memory")
         except Exception as e:
