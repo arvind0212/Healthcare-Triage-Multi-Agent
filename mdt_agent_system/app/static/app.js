@@ -4,12 +4,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Mermaid with the updated configuration
     mermaid.initialize({
         startOnLoad: false,
-        theme: 'neutral',
+        theme: 'base',
         securityLevel: 'loose',
         flowchart: {
             useMaxWidth: true,
             htmlLabels: true,
-            curve: 'basis'
+            curve: 'basis',
+            diagramPadding: 8,
+            nodeSpacing: 60,
+            rankSpacing: 80,
+            defaultRenderer: 'dagre-wrapper'
+        },
+        themeVariables: {
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '14px',
+            primaryTextColor: '#FFFFFF',
+            lineColor: '#999999',
+            mainBkg: '#F3F4F6',
+            nodeBorder: '#E5E7EB',
+            clusterBkg: 'transparent',
+            clusterBorder: 'transparent',
+            edgeLabelBackground: 'transparent'
         },
         parseError: function(err) {
             console.error('Mermaid parse error:', err);
@@ -47,7 +62,8 @@ document.addEventListener('DOMContentLoaded', () => {
         pathology_agent: { id: 'pathology', name: 'Pathology Agent', icon: 'fa-microscope' },
         guideline_agent: { id: 'guideline', name: 'Guideline Agent', icon: 'fa-book-medical' },
         specialist_agent: { id: 'specialist', name: 'Specialist Agent', icon: 'fa-user-md' },
-        evaluation_agent: { id: 'evaluation', name: 'Evaluation Agent', icon: 'fa-check-square' }
+        evaluation_agent: { id: 'evaluation', name: 'Evaluation Agent', icon: 'fa-check-square' },
+        summary_agent: { id: 'summary', name: 'Summary Agent', icon: 'fa-file-alt' }
     };
     
     // Node state storage
@@ -274,9 +290,39 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Status update received:', event.data);
         try {
             const data = JSON.parse(event.data);
-            updateWorkflowVisualization(data);
+            console.log('Parsed status update data:', data);
+            
+            // Check different possible data formats
+            if (data.agent_id && data.status) {
+                console.log('Found standard format with agent_id and status');
+                updateWorkflowVisualization(data);
+            } else if (data.data && data.data.agent_id) {
+                console.log('Found nested data format');
+                updateWorkflowVisualization(data.data);
+            } else if (data.agent && data.state) {
+                console.log('Found alternative format with agent and state');
+                updateWorkflowVisualization({
+                    agent_id: data.agent,
+                    status: data.state
+                });
+            } else {
+                // Try to extract from any format by looking for agent and status fields
+                let agentId = data.agent_id || data.agent || data.agentId;
+                let status = data.status || data.state || data.statusUpdate;
+                
+                if (agentId && status) {
+                    console.log('Found agent and status in alternative fields:', { agentId, status });
+                    updateWorkflowVisualization({
+                        agent_id: agentId,
+                        status: status
+                    });
+                } else {
+                    console.warn('Unrecognized status update format:', data);
+                }
+            }
         } catch (error) {
             console.error('Error parsing status update:', error);
+            console.error('Raw event data:', event.data);
         }
     }
     
@@ -295,6 +341,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleCompleteEvent(event) {
         console.log('Simulation complete:', event.data);
         try {
+            // Ensure the visualization shows the final state
+            // Set coordinator and any agents still in 'running' to 'complete'
+            nodeStates['coordinator'] = 'complete';  // Explicitly set coordinator to complete
+            Object.keys(nodeStates).forEach(key => {
+                if (nodeStates[key] === 'running') {
+                    console.log(`Setting agent ${key} to complete state`);
+                    nodeStates[key] = 'complete';
+                }
+            });
+            renderMermaidDiagram();
+            
             // Close the EventSource since we're done
             if (eventSource) {
                 eventSource.close();
@@ -423,33 +480,59 @@ document.addEventListener('DOMContentLoaded', () => {
         renderMermaidDiagram();
     }
 
+    // Update agent key normalization
+    function normalizeAgentKey(agentId) {
+        // Handle empty or null input
+        if (!agentId) {
+            console.warn('Empty or null agent ID provided');
+            return '';
+        }
+
+        // Convert to string, lowercase, and trim whitespace
+        let normalized = String(agentId).toLowerCase().trim();
+
+        // Special case for Coordinator
+        if (normalized === 'coordinator') {
+            return 'coordinator';
+        }
+
+        // Remove 'agent' suffix if present (case-insensitive)
+        normalized = normalized.replace(/agent$/i, '');
+
+        // Replace non-alphanumeric characters (except underscores) with underscores
+        normalized = normalized.replace(/[^a-z0-9_]+/g, '_');
+
+        // Remove multiple consecutive underscores
+        normalized = normalized.replace(/_+/g, '_');
+
+        // Remove leading and trailing underscores
+        normalized = normalized.replace(/^_+|_+$/g, '');
+
+        // Add '_agent' suffix if not already present and not coordinator
+        if (!normalized.endsWith('_agent')) {
+            normalized = normalized + '_agent';
+        }
+
+        return normalized;
+    }
+
     // Update workflow visualization based on status data
     function updateWorkflowVisualization(statusData) {
+        console.log('Updating workflow visualization with data:', statusData);
+        
         // Skip if we don't have agent data
-        if (!statusData || !statusData.agent_id) return;
-        
-        // Normalize agent_id (convert CamelCase to snake_case if needed)
-        let agentKey = statusData.agent_id.replace(/([A-Z])/g, '_$1').toLowerCase();
-        if (agentKey.startsWith('_')) {
-            agentKey = agentKey.substring(1);
+        if (!statusData || !statusData.agent_id) {
+            console.warn('Invalid status data:', statusData);
+            return;
         }
         
-        // If it's a known variation, map it to the correct key
-        const agentVariations = {
-            'ehr': 'ehr_agent',
-            'imaging': 'imaging_agent',
-            'pathology': 'pathology_agent', 
-            'guideline': 'guideline_agent',
-            'specialist': 'specialist_agent',
-            'evaluation': 'evaluation_agent'
-        };
-        
-        if (agentVariations[agentKey]) {
-            agentKey = agentVariations[agentKey];
-        }
+        // Normalize agent_id using the new function
+        let agentKey = normalizeAgentKey(statusData.agent_id);
+        console.log('Normalized agent key:', agentKey);
         
         // Get status from the data
         const status = statusData.status ? statusData.status.toLowerCase() : '';
+        console.log('Normalized status:', status);
         
         // Update agent state
         updateAgentState(agentKey, status, statusData.message || '');
@@ -457,28 +540,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update agent state and re-render diagram if needed
     function updateAgentState(agentKey, status, message = '') {
+        console.log('Updating agent state:', { agentKey, status, message });
+        
         // Skip if unknown agent
         if (!agentMap[agentKey]) {
-            console.log(`Unknown agent: ${agentKey}`);
+            console.warn(`Unknown agent: ${agentKey}`);
             return;
         }
         
         // Map status to state
-        let newState = 'inactive';
-        
-        if (status === 'running' || status === 'start' || status === 'processing') {
-            newState = 'running';
-        } else if (status === 'complete' || status === 'completed' || status === 'success') {
-            newState = 'complete';
-        } else if (status === 'error' || status === 'failed' || status === 'failure') {
-            newState = 'error';
+        let newState;
+        switch (status) {
+            case 'active':
+            case 'running':
+            case 'start':
+            case 'processing':
+                newState = 'running';
+                break;
+            case 'done':
+            case 'complete':
+            case 'completed':
+            case 'success':
+                newState = 'complete';
+                break;
+            case 'error':
+            case 'failed':
+            case 'failure':
+                newState = 'error';
+                break;
+            default:
+                newState = 'inactive';
         }
+        
+        console.log('Mapped status to state:', { status, newState });
         
         // Only update and re-render if state changed
         if (newState !== nodeStates[agentKey]) {
             console.log(`Agent ${agentKey} changed state: ${nodeStates[agentKey]} -> ${newState}`);
             nodeStates[agentKey] = newState;
+            console.log('Current node states:', nodeStates);
             renderMermaidDiagram();
+        } else {
+            console.log(`No state change needed for ${agentKey} (current: ${nodeStates[agentKey]})`);
         }
     }
 
@@ -489,53 +592,67 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const svgId = 'mermaid-workflow-svg';
         
-        // Build class definitions
-        const classDefs = `
-            classDef inactive fill:#F3F4F6,stroke:#E5E7EB,color:#4B5563;
-            classDef running fill:#3B82F6,stroke:#2563EB,color:#FFFFFF,stroke-width:2px;
-            classDef complete fill:#10B981,stroke:#059669,color:#FFFFFF;
-            classDef error fill:#EF4444,stroke:#DC2626,color:#FFFFFF;
-        `;
+        // Build the diagram definition with proper newlines
+        let definition = [];
         
-        // Build graph definition
-        let definition = `graph LR\n${classDefs}\n`;
+        // Start with flowchart declaration and direction
+        definition.push('flowchart LR');
         
-        // Add node definitions
+        // Add style statements for each state
+        definition.push('classDef running fill:#3B82F6,stroke:#2563EB,color:#FFFFFF,stroke-width:2px');
+        definition.push('classDef complete fill:#10B981,stroke:#059669,color:#FFFFFF,stroke-width:1px');
+        definition.push('classDef error fill:#EF4444,stroke:#DC2626,color:#FFFFFF,stroke-width:1px');
+        definition.push('classDef inactive fill:#F3F4F6,stroke:#E5E7EB,color:#4B5563,stroke-width:1px');
+        
+        // Define nodes with their classes
         Object.keys(agentMap).forEach(key => {
             const agent = agentMap[key];
-            definition += `    ${agent.id}(${agent.name})\n`;
+            const state = nodeStates[key] || 'inactive';
+            definition.push(`${agent.id}["${agent.name}"]:::${state}`);
         });
         
-        // Add edges
-        definition += `    coordinator --> ehr\n`;
-        definition += `    coordinator --> imaging\n`;
-        definition += `    coordinator --> pathology\n`;
-        definition += `    coordinator --> guideline\n`;
-        definition += `    coordinator --> specialist\n`;
-        definition += `    coordinator --> evaluation\n`;
+        // Add edges - now including Summary Agent
+        definition.push(`${agentMap.coordinator.id} --> ${agentMap.ehr_agent.id}`);
+        definition.push(`${agentMap.coordinator.id} --> ${agentMap.imaging_agent.id}`);
+        definition.push(`${agentMap.coordinator.id} --> ${agentMap.pathology_agent.id}`);
+        definition.push(`${agentMap.coordinator.id} --> ${agentMap.guideline_agent.id}`);
+        definition.push(`${agentMap.coordinator.id} --> ${agentMap.specialist_agent.id}`);
+        definition.push(`${agentMap.coordinator.id} --> ${agentMap.evaluation_agent.id}`);
         
-        // Add node classes based on states
-        Object.keys(nodeStates).forEach(key => {
-            if (agentMap[key]) {
-                definition += `    class ${agentMap[key].id} ${nodeStates[key]};\n`;
-            }
-        });
+        // Add Summary Agent connections - it receives input from all other agents except coordinator
+        definition.push(`${agentMap.ehr_agent.id} --> ${agentMap.summary_agent.id}`);
+        definition.push(`${agentMap.imaging_agent.id} --> ${agentMap.summary_agent.id}`);
+        definition.push(`${agentMap.pathology_agent.id} --> ${agentMap.summary_agent.id}`);
+        definition.push(`${agentMap.guideline_agent.id} --> ${agentMap.summary_agent.id}`);
+        definition.push(`${agentMap.specialist_agent.id} --> ${agentMap.summary_agent.id}`);
+        definition.push(`${agentMap.evaluation_agent.id} --> ${agentMap.summary_agent.id}`);
+        
+        // Join all lines with newlines
+        const finalDefinition = definition.join('\n');
+        
+        console.log('Mermaid definition:', finalDefinition);
         
         try {
-            // Show loading indicator
             diagramContainer.innerHTML = '<div class="loading">Rendering diagram...</div>';
-            
-            // Render the diagram
-            const { svg } = await mermaid.render(svgId, definition);
+            const { svg } = await mermaid.render(svgId, finalDefinition);
             diagramContainer.innerHTML = svg;
             
+            // Add specific styles to the SVG element after rendering
+            const svgElement = diagramContainer.querySelector('svg');
+            if (svgElement) {
+                svgElement.style.width = '100%';
+                svgElement.style.height = 'auto';
+                svgElement.style.minHeight = '300px';
+            }
+            
+            console.log('Node states:', nodeStates);
         } catch (error) {
             console.error('Failed to render Mermaid diagram:', error);
             diagramContainer.innerHTML = `
                 <details class="error-details">
                     <summary>Error rendering diagram</summary>
                     <p>${error.message || 'Unknown error'}</p>
-                    <pre>${definition}</pre>
+                    <pre>${finalDefinition}</pre>
                 </details>
             `;
         }
@@ -1294,4 +1411,4 @@ document.addEventListener('DOMContentLoaded', () => {
         
         return null;
     }
-}); 
+});
