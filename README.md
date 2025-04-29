@@ -214,6 +214,7 @@ This approach to tool mocking allows us to:
 ### Prerequisites
 - Python 3.9+
 - pip package manager
+- Google Gemini API key (free tier available)
 
 ### Installation
 1. Clone the repository:
@@ -230,19 +231,28 @@ This approach to tool mocking allows us to:
 3. Set up environment variables:
    ```
    # Create a .env file with your API keys
-   echo "OPENAI_API_KEY=your_api_key_here" > .env
+   echo "GOOGLE_API_KEY=your_gemini_api_key_here" > .env
    ```
 
 ### Running the System
-1. Start the system with a sample case:
+1. Start the system with uvicorn:
    ```
-   python -m mdt_agent_system.app.main
+   python -m uvicorn app.main:app --reload
    ```
 
 2. To run tests:
    ```
    pytest mdt_agent_system/app/tests/
    ```
+
+### Why We Use Google Gemini
+This implementation uses Google's Gemini LLM for several reasons:
+- **Free Usage Tier**: Generous free quota for development and testing
+- **Powerful Capabilities**: Strong medical reasoning capabilities comparable to other leading models
+- **Low Latency**: Fast response times for multi-agent interactions
+- **Robust API**: Well-designed API with good documentation and stability
+
+Gemini provides the power needed for sophisticated healthcare reasoning while keeping development costs low. The system architecture is model-agnostic and can be easily switched to use other LLMs if needed.
 
 ## Reflection on AI Assistance
 
