@@ -3,9 +3,10 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
-# Revert to original absolute import
+# Import the FastAPI app
 from mdt_agent_system.app.main import app
 
+# Initialize the TestClient
 client = TestClient(app)
 
 @pytest.fixture

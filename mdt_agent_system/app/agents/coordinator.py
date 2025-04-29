@@ -1,25 +1,21 @@
 import logging
-import asyncio # Added for simulating work
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional, Union
-import traceback  # Add traceback import
+import traceback
 
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough, RunnableConfig
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from pydantic import BaseModel, Field # Added Field for AgentContext
+from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 
 from mdt_agent_system.app.core.schemas import PatientCase, MDTReport, StatusUpdate
 from mdt_agent_system.app.core.status import StatusUpdateService, Status
 from mdt_agent_system.app.core.logging import get_logger
 from mdt_agent_system.app.agents.ehr_agent import EHRAgent
-# from mdt_agent_system.app.core.llm import get_llm
-# from mdt_agent_system.app.core.memory import MemoryManager
-# from mdt_agent_system.app.core.callbacks import StatusUpdateCallbackHandler
 
 logger = get_logger(__name__)
 
-# Placeholder for Agent Outputs
 class AgentOutputPlaceholder(BaseModel):
     """Enhanced placeholder for agent outputs that handles both old and new formats."""
     summary: str = "Default summary"
@@ -34,7 +30,6 @@ class AgentOutputPlaceholder(BaseModel):
             "details": self._convert_to_serializable(self.details)
         }
         
-        # Include new format fields if available
         if self.markdown_content is not None:
             result["markdown_content"] = self.markdown_content
         if self.metadata is not None:
@@ -46,7 +41,6 @@ class AgentOutputPlaceholder(BaseModel):
     def from_agent_output(cls, output: Any) -> 'AgentOutputPlaceholder':
         """Create AgentOutputPlaceholder from various agent output formats."""
         if isinstance(output, dict):
-            # Handle new format (AgentOutput)
             if "markdown_content" in output and "metadata" in output:
                 return cls(
                     summary=output.get("summary", "Analysis completed"),
@@ -54,12 +48,10 @@ class AgentOutputPlaceholder(BaseModel):
                     markdown_content=output["markdown_content"],
                     metadata=output["metadata"]
                 )
-            # Handle legacy format
             return cls(
                 summary=output.get("summary", "Analysis completed"),
                 details=output
             )
-        # Handle string or other formats
         return cls(
             summary=str(output) if output else "Analysis completed",
             details={"raw_output": str(output) if output else "No details available"}
@@ -81,7 +73,6 @@ class AgentOutputPlaceholder(BaseModel):
             except:
                 return "Non-serializable object"
 
-# Context passed between agent steps
 class AgentContext(BaseModel):
     """In-memory context object passed between agent steps."""
     run_id: str
@@ -95,19 +86,14 @@ class AgentContext(BaseModel):
     evaluation: Optional[Dict[str, Any]] = None
     summary: Optional[Dict[str, Any]] = None
 
-    # Extra fields allowed for intermediate data
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
     
     def dict(self, *args, **kwargs):
         """Override dict method to handle complex objects."""
         result = {
             "run_id": self.run_id,
-            # Exclude complex objects that don't need to be serialized
-            # "patient_case": self._convert_to_serializable(self.patient_case),
-            # "status_service": "StatusUpdateService instance"  # Skip service objects
         }
         
-        # Add agent outputs with proper serialization
         if self.ehr_analysis:
             result["ehr_analysis"] = self._convert_to_serializable(self.ehr_analysis)
         if self.imaging_analysis:
@@ -136,7 +122,6 @@ class AgentContext(BaseModel):
         elif hasattr(obj, "__dict__"):
             return self._convert_to_serializable(obj.__dict__)
         else:
-            # Try to get a string representation if all else fails
             try:
                 return str(obj)
             except:

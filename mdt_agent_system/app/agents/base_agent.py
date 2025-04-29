@@ -31,14 +31,7 @@ class BaseSpecializedAgent(ABC):
                  run_id: str,
                  status_service: StatusUpdateService,
                  callbacks: Optional[List[BaseCallbackHandler]] = None):
-        """Initialize the base specialized agent.
-        
-        Args:
-            agent_id: The unique identifier for this agent (e.g., "EHRAgent")
-            run_id: The current simulation run identifier
-            status_service: The service for emitting status updates
-            callbacks: Optional callback handlers for LangChain
-        """
+        """Initialize the base specialized agent."""
         self.agent_id = agent_id
         self.run_id = run_id
         self.status_service = status_service
@@ -46,7 +39,6 @@ class BaseSpecializedAgent(ABC):
         self.llm = get_llm(callbacks=self.callbacks)
         self.output_parser = MDTOutputParser()
         
-        # Initialize memory with a unique session ID for this run and agent
         memory_session_id = f"{run_id}_{agent_id}"
         self.memory = PersistentConversationMemory(
             file_path=f"memory_data/{agent_id}_memory.json",
@@ -54,7 +46,6 @@ class BaseSpecializedAgent(ABC):
             return_messages=True
         )
         
-        # Set up prompt template based on agent type
         agent_type = self._get_agent_type()
         self.prompt_template = ChatPromptTemplate.from_template(
             get_prompt_template(agent_type)
@@ -64,21 +55,11 @@ class BaseSpecializedAgent(ABC):
     
     @abstractmethod
     def _get_agent_type(self) -> str:
-        """Return the type of agent for prompt template selection.
-        
-        Returns:
-            The agent type string (e.g., "ehr", "imaging", etc.)
-        """
+        """Return the type of agent for prompt template selection."""
         pass
     
     async def _emit_status(self, status: str, message: str, details: Optional[Dict[str, Any]] = None) -> None:
-        """Emit a status update.
-        
-        Args:
-            status: The status code (e.g., "ACTIVE", "DONE", "ERROR")
-            message: A human-readable status message
-            details: Optional additional details for the status update
-        """
+        """Emit a status update."""
         await self.status_service.emit_status_update(
             run_id=self.run_id,
             status_update_data={
@@ -90,37 +71,16 @@ class BaseSpecializedAgent(ABC):
         )
     
     async def process(self, patient_case: PatientCase, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Process the patient case with this specialized agent.
-        
-        This is the main entry point that should be called by the coordinator.
-        
-        Args:
-            patient_case: The patient case data
-            context: Additional context from previous agent steps
-            
-        Returns:
-            The agent's analysis output
-        """
+        """Process the patient case with this specialized agent."""
         try:
-            # Emit starting status
             await self._emit_status("ACTIVE", f"Starting {self.agent_id} analysis")
             
-            # Prepare input for the agent
             agent_input = self._prepare_input(patient_case, context)
-            
-            # Process with LLM
             result = await self._run_analysis(agent_input)
-            
-            # Parse the output using the new parser
             parsed_output = self.output_parser.parse_llm_output(result)
-            
-            # Structure the output while maintaining backward compatibility
             structured_output = self._structure_output(parsed_output)
             
-            # Save to memory
             self._save_to_memory(agent_input, structured_output)
-            
-            # Emit completion status
             await self._emit_status("DONE", f"Completed {self.agent_id} analysis")
             
             return structured_output
@@ -132,67 +92,32 @@ class BaseSpecializedAgent(ABC):
     
     @abstractmethod
     def _prepare_input(self, patient_case: PatientCase, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare the input for the agent's analysis.
-        
-        Args:
-            patient_case: The patient case data
-            context: Additional context from previous agent steps
-            
-        Returns:
-            A dictionary with the prepared input
-        """
+        """Prepare the input for the agent's analysis."""
         pass
     
     async def _run_analysis(self, input_data: Dict[str, Any]) -> str:
-        """Run the LLM analysis with the prepared input.
-        
-        Args:
-            input_data: The prepared input data
-            
-        Returns:
-            The LLM's response as a string
-        """
-        # Configure the LLM run
+        """Run the LLM analysis with the prepared input."""
         config = RunnableConfig(
             callbacks=self.callbacks,
             run_name=f"{self.agent_id}_analysis"
         )
         
-        # Format the prompt with input data
         prompt = self.prompt_template.format_messages(
             context=input_data.get("context", ""),
             task=input_data.get("task", "Analyze the patient case")
         )
         
-        # Invoke the LLM
         response = await self.llm.ainvoke(prompt, config=config)
-        
-        # Return the content as a string
         return response.content
     
     @abstractmethod
     def _structure_output(self, parsed_output: AgentOutput) -> Dict[str, Any]:
-        """Structure the parsed output into a standardized format.
-        
-        Args:
-            parsed_output: The parsed output from the output parser
-            
-        Returns:
-            A structured dictionary with the analysis results
-        """
-        # This method should be implemented by each agent to handle their specific output structure
-        # while maintaining backward compatibility
+        """Structure the parsed output into a standardized format."""
         pass
     
     def _save_to_memory(self, inputs: Dict[str, Any], outputs: Dict[str, Any]) -> None:
-        """Save the interaction to memory.
-        
-        Args:
-            inputs: The input provided to the agent
-            outputs: The structured output from the agent
-        """
+        """Save the interaction to memory."""
         try:
-            # Save both the new structured output and maintain memory compatibility
             memory_output = {
                 "structured_output": outputs,
                 "markdown_content": outputs.get("markdown_content", ""),

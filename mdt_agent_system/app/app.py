@@ -1,5 +1,5 @@
 """
-MDT Agent System - FastAPI Application
+MDT Agent System - FastAPI Application Factory
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

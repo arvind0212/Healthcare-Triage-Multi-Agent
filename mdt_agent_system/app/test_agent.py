@@ -24,7 +24,6 @@ from mdt_agent_system.app.core.status import StatusUpdateService
 from mdt_agent_system.app.core.status.service import get_status_service
 from mdt_agent_system.app.core.logging.logger import get_logger
 
-# Import agents
 from mdt_agent_system.app.agents.ehr_agent import EHRAgent
 from mdt_agent_system.app.agents.imaging_agent import ImagingAgent
 from mdt_agent_system.app.agents.pathology_agent import PathologyAgent
@@ -32,10 +31,8 @@ from mdt_agent_system.app.agents.guideline_agent import GuidelineAgent
 from mdt_agent_system.app.agents.specialist_agent import SpecialistAgent
 from mdt_agent_system.app.agents.evaluation_agent import EvaluationAgent
 
-# Set up logging
 logger = get_logger(__name__)
 
-# Sample patient case path
 SAMPLE_PATIENT_CASE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 
     "core", "samples", "patient_case.json"
@@ -46,16 +43,10 @@ class AgentTester:
     
     def __init__(self):
         """Initialize the tester with sample data and services."""
-        # Create run_id for this test
         self.run_id = str(uuid.uuid4())
-        
-        # Initialize status service (use the one from the application)
         self.status_service = get_status_service()
-        
-        # Subscribe to status updates
         self.status_subscription = None
         
-        # Load sample patient case
         with open(SAMPLE_PATIENT_CASE_PATH, "r") as f:
             self.patient_case = PatientCase(**json.load(f))
         
@@ -104,17 +95,12 @@ class AgentTester:
             ]
         }
         
-        # Ensure memory_data directory exists for agent memory persistence
         os.makedirs("memory_data", exist_ok=True)
-        
         logger.info(f"AgentTester initialized with run_id: {self.run_id}")
         
     async def subscribe_to_status_updates(self):
         """Subscribe to status updates and print them."""
-        # Don't await the generator, store it directly
         self.status_subscription = self.status_service.subscribe(self.run_id)
-        
-        # Process status updates in background
         asyncio.create_task(self._process_status_updates())
         
     async def _process_status_updates(self):
@@ -129,7 +115,6 @@ class AgentTester:
         """Get appropriate context for the specified agent type."""
         context = {}
         
-        # Add context based on agent type and dependencies
         if agent_type in ["imaging", "pathology", "guideline", "specialist", "evaluation"]:
             context["ehr_analysis"] = self.ehr_output
             
@@ -170,19 +155,14 @@ class AgentTester:
         print(f"Testing {agent_type.upper()} Agent")
         print(f"{'='*50}\n")
         
-        # Subscribe to status updates
         await self.subscribe_to_status_updates()
         
         try:
-            # Create the agent instance
             agent = self.create_agent(agent_type)
-            
-            # Get appropriate context
             context = self.get_agent_context(agent_type)
             
             print(f"Processing with {agent_type.upper()} Agent... (this may take a moment)")
             
-            # Run the agent
             result = await agent.process(self.patient_case, context)
             
             print("\nRESULT:")
@@ -195,29 +175,21 @@ class AgentTester:
             logger.exception(f"Error testing {agent_type} agent: {str(e)}")
             raise
         finally:
-            # Allow time for final status updates
             await asyncio.sleep(1)
-            # Clean up by removing run data
-            self.status_service.clear_run_data(self.run_id)
+            await self.status_service.clear_run_data(self.run_id)
 
 async def main():
-    """Main entry point."""
-    if len(sys.argv) != 2:
-        print(__doc__)
-        sys.exit(1)
-    
+    """Main entrypoint for agent testing."""
+    if len(sys.argv) < 2:
+        print("Usage: python test_agent.py <agent_type>")
+        print("Available agent types: ehr, imaging, pathology, guideline, specialist, evaluation")
+        return 1
+        
     agent_type = sys.argv[1].lower()
-    valid_types = ["ehr", "imaging", "pathology", "guideline", "specialist", "evaluation"]
     
-    if agent_type not in valid_types:
-        print(f"Error: {agent_type} is not a valid agent type.")
-        print(f"Valid types: {', '.join(valid_types)}")
-        sys.exit(1)
-    
-    logger.info(f"Starting agent test for {agent_type}")
     tester = AgentTester()
     await tester.test_agent(agent_type)
-    logger.info(f"Completed agent test for {agent_type}")
+    return 0
 
 if __name__ == "__main__":
     asyncio.run(main()) 
